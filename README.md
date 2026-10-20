@@ -6,7 +6,7 @@
 
 > **A dual-view ATS resume optimization portal and job application tracker. Upload any Job Description (JD), instantly tailor your master LaTeX resume to pass applicant tracking systems with ZERO fabrications, and preview/download compiled PDFs and LaTeX source in an Overleaf-style split workspace.**
 
-**Author:** Shashwat Kumar Gautam ([@Shockshwat](https://github.com/Shockshwat))  
+**Author:** Shashwat Kumar Gautam ([@ShashwatG16](https://github.com/ShashwatG16))  
 **Stack:** Python, Streamlit, SQLite, TeXLive Cloud Engine, PyPDF, Regex AST Keyword Matcher  
 
 ---
@@ -84,7 +84,7 @@ latex-ats-resume-optimizer/
 
 ### 1. Clone Repository & Setup
 ```bash
-git clone https://github.com/Shockshwat/latex-ats-resume-optimizer.git
+git clone https://github.com/ShashwatG16/latex-ats-resume-optimizer.git
 cd latex-ats-resume-optimizer
 
 # Create virtual environment
@@ -110,4 +110,4 @@ The portal will launch in your default browser at `http://localhost:8501`.
 
 ## 📄 License & Attribution
 
-Distributed under the **MIT License**. Created by [Shashwat Kumar Gautam](https://github.com/Shockshwat) for transparent, high-integrity job application optimization.
+Distributed under the **MIT License**. Created by [Shashwat Kumar Gautam](https://github.com/ShashwatG16) for transparent, high-integrity job application optimization.

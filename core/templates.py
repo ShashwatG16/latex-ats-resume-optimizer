@@ -270,7 +270,7 @@ DEFAULT_SHASHWAT_TEX = r"""%-------------------------
     \textbf{\small Software Systems Engineer $|$ Full-Stack \& Cloud Infrastructure $|$ IIIT Allahabad} \\ \vspace{2.5pt}
     \footnotesize \raisebox{-0.1\height}\faPhone\ +91 9999999999 ~$\cdot$~
     \href{mailto:iit2020030@iiita.ac.in}{\raisebox{-0.2\height}\faEnvelope\ iit2020030@iiita.ac.in} ~$\cdot$~
-    \href{https://github.com/Shockshwat}{\raisebox{-0.2\height}\faGithub\ github.com/Shockshwat} ~$\cdot$~
+    \href{https://github.com/ShashwatG16}{\raisebox{-0.2\height}\faGithub\ github.com/ShashwatG16} ~$\cdot$~
     \raisebox{-0.1\height}\faMapMarkerAlt\ Prayagraj / Bengaluru, India
     \vspace{-7pt}
 \end{center}
@@ -313,7 +313,7 @@ DEFAULT_SHASHWAT_TEX = r"""%-------------------------
     \resumeSubHeadingListStart
       \resumeProjectHeading
           {AudioSync -- Distributed Real-Time Low-Latency Audio Streaming}{C++, Python, WebSockets, Audio DSP}
-          {\href{https://github.com/Shockshwat/AudioSync}{\faGithub\ GitHub} ~$|$~ 2024}
+          {\href{https://github.com/ShashwatG16/AudioSync}{\faGithub\ GitHub} ~$|$~ 2024}
           \resumeItemListStart
             \resumeItem{\textbf{Architecture:} Engineered a cross-device low-latency audio transmission engine synchronizing audio feeds across distributed local network nodes.}
             \resumeItem{\textbf{Performance:} Implemented ring-buffer audio scheduling reducing jitter and network drop-out rates under 15ms buffer latencies.}
@@ -321,7 +321,7 @@ DEFAULT_SHASHWAT_TEX = r"""%-------------------------
       \vspace{2pt}
       \resumeProjectHeading
           {Latex ATS Resume Optimizer \& Portal}{Python, Streamlit, SQLite, LaTeX Compilers}
-          {\href{https://github.com/Shockshwat}{\faGithub\ GitHub} ~$|$~ 2026}
+          {\href{https://github.com/ShashwatG16}{\faGithub\ GitHub} ~$|$~ 2026}
           \resumeItemListStart
             \resumeItem{\textbf{Architecture:} Built a full-stack resume tailoring and job-application tracking portal enabling real-time ATS keyword matching and live LaTeX-to-PDF synchronization.}
             \resumeItem{\textbf{Features:} Integrated dual Overleaf-style code and PDF viewer with sub-3s cloud compilation and persistent multi-user database storage.}
