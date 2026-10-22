@@ -598,28 +598,53 @@ tab1, tab2, tab3 = st.tabs([
     "👤 Master LaTeX Manager",
 ])
 
+def reset_workspace_for_new_job(master_latex: str, clear_url: bool = False):
+    """Clears older job fields, ATS reports, tailored LaTeX, and previous PDF preview."""
+    st.session_state["form_company"] = ""
+    st.session_state["form_job_title"] = ""
+    st.session_state["form_req_id"] = ""
+    st.session_state["form_location"] = ""
+    st.session_state["form_jd_text"] = ""
+    if clear_url:
+        st.session_state["form_job_url"] = ""
+    st.session_state["current_ats_stats"] = None
+    st.session_state["current_tailored_latex"] = master_latex
+    st.session_state["latex_code_editor"] = master_latex
+    st.session_state["current_pdf_bytes"] = None
+    if "selected_missing_kws_multiselect" in st.session_state:
+        del st.session_state["selected_missing_kws_multiselect"]
+
+
 # ==============================================================================
 # TAB 1: TAILOR & OVERLEAF STUDIO
 # ==============================================================================
 with tab1:
-    for field_key in ("form_company", "form_job_title", "form_req_id", "form_location", "form_job_url", "form_jd_text"):
+    for field_key in ("form_company", "form_job_title", "form_req_id", "form_location", "form_job_url", "form_jd_text", "last_seen_job_url"):
         if field_key not in st.session_state:
             st.session_state[field_key] = ""
 
+    def on_job_url_change():
+        new_url = st.session_state.get("form_job_url", "").strip()
+        prev_url = st.session_state.get("last_seen_job_url", "").strip()
+        if new_url != prev_url:
+            reset_workspace_for_new_job(active_user["master_latex"], clear_url=False)
+            st.session_state["last_seen_job_url"] = new_url
+
     with st.expander("🔗 **Step 1: Paste Job Link (Source of Truth) — Auto-Fetch Role, Company & JD**", expanded=True):
-        url_c1, url_c2, url_c3 = st.columns([2.4, 0.9, 1.1])
+        url_c1, url_c2, url_c3, url_c4 = st.columns([2.2, 0.85, 1.05, 0.55])
         with url_c1:
             job_url = st.text_input(
                 "🔗 Job Posting URL (Primary Source of Truth)",
                 placeholder="Paste LinkedIn, Workday, Greenhouse, Lever, or corporate career link (https://...)",
                 key="form_job_url",
+                on_change=on_job_url_change,
             )
         with url_c2:
             st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
             fetch_url_clicked = st.button(
                 "🌐 Auto-Fetch Job Details",
                 use_container_width=True,
-                help="Scrapes Role Title, Company, Req ID, Location, and full JD from the link",
+                help="Clears old data and scrapes Role Title, Company, Req ID, Location, and full JD from the link",
             )
         with url_c3:
             st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
@@ -627,16 +652,32 @@ with tab1:
                 "⚡ Fetch Link & Tailor Resume",
                 use_container_width=True,
                 type="primary",
-                help="One-click: extracts all job details from URL, tailors your LaTeX resume, and compiles live PDF",
+                help="Clears old data, extracts all job details from URL, tailors your LaTeX resume, and compiles live PDF",
             )
+        with url_c4:
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+            clear_all_clicked = st.button(
+                "🧹 Clear",
+                use_container_width=True,
+                help="Clear all job fields, ATS reports, and reset to master resume",
+            )
+
+        if clear_all_clicked:
+            reset_workspace_for_new_job(active_user["master_latex"], clear_url=True)
+            st.session_state["last_seen_job_url"] = ""
+            st.rerun()
 
         auto_tailor_after_fetch = False
         if fetch_url_clicked or fetch_and_tailor_clicked:
             if not job_url.strip():
                 st.error("Please paste a Job Posting URL first.")
             else:
+                # Explicitly clear all previous fields, ATS report, and tailored resume first
+                reset_workspace_for_new_job(active_user["master_latex"], clear_url=False)
+                st.session_state["last_seen_job_url"] = job_url.strip()
+
                 active_prov = "gemini" if ai_provider == "Google Gemini AI" else ("openai" if ai_provider == "OpenAI GPT-4o" else "heuristic")
-                with st.spinner("🌐 Accessing job link & extracting Role, Company, Location, Req ID, and full Job Description..."):
+                with st.spinner("🌐 Clearing previous job state & extracting Role, Company, Location, Req ID, and JD from link..."):
                     scraped = extract_job_from_url(
                         url=job_url,
                         api_key=api_key,
@@ -644,18 +685,13 @@ with tab1:
                         model_name=model_name,
                     )
                     if scraped.get("success"):
-                        if scraped.get("company"):
-                            st.session_state["form_company"] = scraped["company"]
-                        if scraped.get("job_title"):
-                            st.session_state["form_job_title"] = scraped["job_title"]
-                        if scraped.get("requisition_id"):
-                            st.session_state["form_req_id"] = scraped["requisition_id"]
-                        if scraped.get("location"):
-                            st.session_state["form_location"] = scraped["location"]
-                        if scraped.get("job_description"):
-                            st.session_state["form_jd_text"] = scraped["job_description"]
+                        st.session_state["form_company"] = scraped.get("company") or ""
+                        st.session_state["form_job_title"] = scraped.get("job_title") or ""
+                        st.session_state["form_req_id"] = scraped.get("requisition_id") or ""
+                        st.session_state["form_location"] = scraped.get("location") or ""
+                        st.session_state["form_jd_text"] = scraped.get("job_description") or ""
                         st.toast(
-                            f"Fetched: {scraped.get('job_title') or 'Role'} at {scraped.get('company') or 'Company'}!",
+                            f"Fetched fresh job: {scraped.get('job_title') or 'Role'} at {scraped.get('company') or 'Company'}!",
                             icon="🌐",
                         )
                         if fetch_and_tailor_clicked:
@@ -1060,6 +1096,13 @@ with tab2:
                     )
                 with btn_a3:
                     if st.button("🎯 Load into Studio", key=f"load_studio_{app['id']}", use_container_width=True):
+                        st.session_state["form_company"] = app.get("company") or ""
+                        st.session_state["form_job_title"] = app.get("job_title") or ""
+                        st.session_state["form_req_id"] = app.get("requisition_id") or ""
+                        st.session_state["form_location"] = app.get("location") or ""
+                        st.session_state["form_job_url"] = app.get("job_url") or ""
+                        st.session_state["last_seen_job_url"] = app.get("job_url") or ""
+                        st.session_state["form_jd_text"] = app.get("job_description") or ""
                         st.session_state["current_tailored_latex"] = app["tailored_latex"]
                         st.session_state["latex_code_editor"] = app["tailored_latex"]
                         pdf_b, _ = compile_latex_to_pdf(app["tailored_latex"])

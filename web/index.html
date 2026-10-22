@@ -1088,11 +1088,33 @@
           const res = await fetch(`/api/users/${this.selectedUserId}/applications`);
           this.applications = await res.json();
         },
+        resetWorkspaceForNewJob(clearUrl = false) {
+          this.form.company = '';
+          this.form.jobTitle = '';
+          this.form.reqId = '';
+          this.form.location = '';
+          this.form.jdText = '';
+          if (clearUrl) this.form.jobUrl = '';
+          this.atsStats = null;
+          this.compileError = null;
+          this.pdfBase64 = null;
+          this.pdfPagesPng = [];
+          this.pdfPageCount = 0;
+          if (this.pdfBlobUrl) {
+            URL.revokeObjectURL(this.pdfBlobUrl);
+            this.pdfBlobUrl = null;
+          }
+          if (this.activeUser) {
+            this.tailoredLatex = this.activeUser.master_latex;
+          }
+        },
         async fetchFromJobUrl(autoTailor = false) {
           if (!this.form.jobUrl.trim()) {
             this.showToast('Please paste a Job Posting URL first.', 'error');
             return;
           }
+          // Clear older job data, ATS report, and previous tailored resume/PDF immediately
+          this.resetWorkspaceForNewJob(false);
           this.isFetchingUrl = true;
           try {
             const res = await fetch('/api/extract-url', {
@@ -1107,11 +1129,11 @@
             });
             const data = await res.json();
             if (data.success) {
-              if (data.company) this.form.company = data.company;
-              if (data.job_title) this.form.jobTitle = data.job_title;
-              if (data.requisition_id) this.form.reqId = data.requisition_id;
-              if (data.location) this.form.location = data.location;
-              if (data.job_description) this.form.jdText = data.job_description;
+              this.form.company = data.company || '';
+              this.form.jobTitle = data.job_title || '';
+              this.form.reqId = data.requisition_id || '';
+              this.form.location = data.location || '';
+              this.form.jdText = data.job_description || '';
               this.showToast(`Fetched: ${data.job_title || 'Role'} at ${data.company || 'Company'}!`);
               if (autoTailor) {
                 await this.runTailorResume();
