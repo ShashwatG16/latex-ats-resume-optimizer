@@ -407,8 +407,18 @@
                 </div>
               </div>
               <div class="p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
-                <div class="text-[11px] font-bold text-rose-600 dark:text-rose-400 mb-1.5">
-                  ⚠️ Missing Keywords ({{ atsStats.missing_keywords.length }}) — Click to copy
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                  <div class="text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                    ⚠️ Missing Keywords ({{ atsStats.missing_keywords.length }})
+                  </div>
+                  <button
+                    v-if="atsStats.missing_keywords.length > 0"
+                    @click="integrateMissingKeywords"
+                    :disabled="isTailoring"
+                    class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm transition"
+                  >
+                    ✨ Naturally Integrate &amp; Re-Compile
+                  </button>
                 </div>
                 <div class="flex flex-wrap gap-1 max-h-20 overflow-y-auto scroller">
                   <button v-for="kw in atsStats.missing_keywords" :key="kw"
@@ -1123,6 +1133,40 @@
             }
           } catch (e) {
             this.showToast(e.message || 'Error tailoring resume', 'error');
+          } finally {
+            this.isTailoring = false;
+          }
+        },
+        async integrateMissingKeywords() {
+          if (!this.atsStats || !this.atsStats.missing_keywords.length) return;
+          this.isTailoring = true;
+          this.compileError = null;
+          try {
+            const res = await fetch('/api/integrate-keywords', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                current_latex: this.tailoredLatex,
+                jd_text: this.form.jdText,
+                missing_keywords: this.atsStats.missing_keywords,
+                company: this.form.company,
+                job_title: this.form.jobTitle,
+                provider: this.aiConfig.provider,
+                model_name: this.aiConfig.modelName,
+                api_key: this.aiConfig.apiKeyInput,
+                base_score_before: this.atsStats.score_before,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Integration failed');
+            this.tailoredLatex = data.tailored_latex;
+            this.atsStats = data.stats;
+            if (data.pdf_base64) {
+              this.updatePdfFromResponse(data.pdf_base64, data.pages_png, data.page_count);
+            }
+            this.showToast(`ATS Score boosted to ${data.stats.score_after}% & PDF re-compiled!`);
+          } catch (e) {
+            this.showToast(e.message || 'Failed to integrate keywords', 'error');
           } finally {
             this.isTailoring = false;
           }

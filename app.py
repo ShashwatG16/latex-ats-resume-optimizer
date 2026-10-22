@@ -39,7 +39,12 @@ from core.database import (
 )
 from core.templates import DEFAULT_DAISY_TEX, DEFAULT_SHASHWAT_TEX
 from core.compiler import compile_latex_to_pdf, pdf_to_base64_data_uri
-from core.ats_engine import evaluate_ats_match, tailor_resume_heuristically, tailor_resume_with_ai
+from core.ats_engine import (
+    evaluate_ats_match,
+    tailor_resume_heuristically,
+    tailor_resume_with_ai,
+    integrate_missing_keywords,
+)
 
 # Page configuration
 st.set_page_config(
@@ -686,7 +691,7 @@ with tab1:
                 unsafe_allow_html=True,
             )
 
-        with st.expander("🔍 **View Matched & Missing ATS Keywords Breakdown**", expanded=True):
+        with st.expander("🔍 **View Matched & Missing ATS Keywords Breakdown & One-Click Booster**", expanded=True):
             kw_c1, kw_c2 = st.columns(2)
             with kw_c1:
                 st.caption(f"✅ **Matched in Tailored Resume ({len(stats['matched_keywords'])})**")
@@ -695,7 +700,54 @@ with tab1:
             with kw_c2:
                 st.caption(f"⚠️ **Unmatched JD Keywords ({len(stats['missing_keywords'])})**")
                 missing_chips = "".join([f'<span class="kw-chip-missing">+ {k}</span>' for k in stats["missing_keywords"][:35]])
-                st.markdown(missing_chips or "None!", unsafe_allow_html=True)
+                st.markdown(missing_chips or "🎉 All extracted JD keywords are matched!", unsafe_allow_html=True)
+
+            if stats["missing_keywords"]:
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                boost_c1, boost_c2 = st.columns([2.2, 1])
+                with boost_c1:
+                    selected_missing_kws = st.multiselect(
+                        "Select Missing Keywords to Naturally Weave into Your Resume:",
+                        options=stats["missing_keywords"],
+                        default=stats["missing_keywords"],
+                        key="selected_missing_kws_multiselect",
+                    )
+                with boost_c2:
+                    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+                    boost_clicked = st.button(
+                        "✨ Naturally Integrate Missing Keywords & Re-Compile PDF",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                if boost_clicked:
+                    if not selected_missing_kws:
+                        st.warning("Please select at least one missing keyword to integrate.")
+                    else:
+                        with st.spinner(f"Naturally weaving {len(selected_missing_kws)} missing keywords into your LaTeX resume & re-compiling PDF..."):
+                            active_prov = "gemini" if ai_provider == "Google Gemini AI" else ("openai" if ai_provider == "OpenAI GPT-4o" else "heuristic")
+                            boosted_tex, boosted_stats = integrate_missing_keywords(
+                                current_latex=st.session_state.get("current_tailored_latex", active_user["master_latex"]),
+                                jd_text=jd_input,
+                                missing_keywords=selected_missing_kws,
+                                target_company=company_name,
+                                target_role=job_title,
+                                api_key=api_key,
+                                provider=active_prov,
+                                model_name=model_name,
+                                base_score_before=stats.get("score_before"),
+                            )
+                            st.session_state["current_tailored_latex"] = boosted_tex
+                            st.session_state["latex_code_editor"] = boosted_tex
+                            st.session_state["current_ats_stats"] = boosted_stats
+
+                            pdf_bytes, err_msg = compile_latex_to_pdf(boosted_tex)
+                            if pdf_bytes:
+                                st.session_state["current_pdf_bytes"] = pdf_bytes
+                                st.toast(f"ATS Score boosted to {boosted_stats['score_after']}% & PDF re-compiled!", icon="🚀")
+                                st.rerun()
+                            else:
+                                st.warning(f"Keywords integrated, but PDF compile warning: {err_msg}")
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 

@@ -285,3 +285,205 @@ Tailor this resume to match the JD's exact keywords and requirements while follo
         stats["ai_error"] = str(e)
         stats["engine_used"] = "Heuristic Fallback (AI Error)"
         return tailored, stats
+
+
+def _escape_latex_keyword(kw: str) -> str:
+    """Safely formats a keyword for LaTeX text mode."""
+    out = kw.strip()
+    out = re.sub(r"(?<!\\)&", r"\\&", out)
+    out = re.sub(r"(?<!\\)%", r"\\%", out)
+    out = re.sub(r"(?<!\\)#", r"\\#", out)
+    out = re.sub(r"(?<!\\)_", r"\\_", out)
+    return out
+
+
+def _heuristic_integrate_keywords(current_latex: str, keywords_to_add: List[str]) -> str:
+    """Naturally weaves missing keywords into Core Skills / Technical Competencies and Professional Summary."""
+    if not keywords_to_add:
+        return current_latex
+
+    formatted_kws = [_escape_latex_keyword(k) for k in keywords_to_add if k.strip()]
+    if not formatted_kws:
+        return current_latex
+
+    updated = current_latex
+    kw_joined = r" $\cdot$ ".join(formatted_kws[:18])
+
+    # 1. If a "Domain & ATS Alignment:" line already exists in Core Skills, append to it; otherwise insert before \end{itemize} of Skills section
+    skills_sec_pattern = re.compile(
+        r"(\\section\{(?:Core Skills|Technical Skills|Skills).*?\\begin\{itemize\}.*?)(?=\s*\\end\{itemize\})",
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    match = skills_sec_pattern.search(updated)
+    if match:
+        skills_block = match.group(1)
+        if "Role-Aligned Competencies:" in skills_block:
+            # Append new keywords to the existing Role-Aligned Competencies line
+            updated = re.sub(
+                r"(\\textbf\{Role-Aligned Competencies:\s*\}[^{}]*?)(\}\})",
+                lambda m: m.group(1) + r" $\cdot$ " + kw_joined + m.group(2),
+                updated,
+                count=1,
+            )
+        else:
+            new_item = f"\n    \\footnotesize{{\\item{{\\textbf{{Role-Aligned Competencies: }} {kw_joined}}}}}"
+            updated = skills_sec_pattern.sub(lambda m: m.group(1) + new_item, updated, count=1)
+    return updated
+
+
+def integrate_missing_keywords(
+    current_latex: str,
+    jd_text: str,
+    missing_keywords: List[str],
+    target_company: str = "",
+    target_role: str = "",
+    api_key: str = "",
+    provider: str = "gemini",
+    model_name: str = "",
+    base_score_before: float = None,
+) -> Tuple[str, Dict]:
+    """
+    Naturally integrates the specified missing keywords into the current LaTeX resume
+    (Professional Summary, Core Skills, and Experience/Project bullet framing) while strictly
+    preserving 1-page geometry and Zero-Fabrication guardrails.
+    """
+    ats_initial = evaluate_ats_match(jd_text, current_latex)
+    score_baseline = base_score_before if base_score_before is not None else ats_initial["match_percentage"]
+
+    target_kws = [k.strip() for k in missing_keywords if k.strip()]
+    if not target_kws:
+        target_kws = ats_initial["missing_keywords"]
+
+    if not target_kws:
+        return current_latex, {
+            "score_before": score_baseline,
+            "score_after": ats_initial["match_percentage"],
+            "matched_keywords": ats_initial["matched_keywords"],
+            "missing_keywords": ats_initial["missing_keywords"],
+            "engine_used": "No Missing Keywords",
+        }
+
+    kws_comma_str = ", ".join(target_kws[:30])
+
+    if provider in ("gemini", "openai") and api_key:
+        system_prompt = """You are an expert LaTeX ATS Resume Optimization Specialist.
+Your task is to naturally and seamlessly integrate the provided list of MISSING JD KEYWORDS into the candidate's existing LaTeX resume so the ATS scanner matches every single one of them, while reading naturally to a human recruiter.
+
+STRICT ZERO-FABRICATION GUARDRAILS:
+1. NEVER change degrees, university names, GPAs, or education dates.
+2. NEVER change employer names, job titles/designations, or employment dates.
+3. NEVER invent fake companies, fake certifications, or fake awards.
+4. HOW TO NATURALLY INTEGRATE THE MISSING KEYWORDS:
+   - Weave domain/action keywords naturally into existing Experience and Project bullet points where contextually truthful (using exact keyword spelling so regex word-boundary checks match).
+   - Integrate technical/tool/methodology keywords into the Core Skills / Technical Competencies categories.
+   - Refine the Professional Summary to naturally incorporate high-priority role keywords.
+   - Keep the document strictly to 1 single page and ensure 100% valid pdflatex syntax (escape &, %, _, # properly, e.g., \\&).
+
+Return ONLY the complete raw LaTeX code from \\documentclass to \\end{document} with no markdown fences."""
+
+        user_prompt = f"""Target Company: {target_company or 'Target Organization'}
+Target Role: {target_role or 'Target Position'}
+
+MISSING KEYWORDS THAT MUST BE NATURALLY INTEGRATED (use exact terms):
+{kws_comma_str}
+
+Job Description Context:
+{jd_text}
+
+Current LaTeX Resume:
+{current_latex}
+
+Please naturally weave the missing keywords above into the Skills, Summary, and Experience/Project bullets and return ONLY the raw compilable LaTeX code."""
+
+        try:
+            tailored_latex = ""
+            chosen_model = model_name or "gemini-3.6-flash"
+            if provider == "gemini":
+                from google import genai
+                from google.genai import types
+                client = genai.Client(api_key=api_key)
+                fallback_order = [
+                    "gemini-3.6-flash",
+                    "gemini-3.5-flash",
+                    "gemini-3-flash-preview",
+                    "gemini-3.5-flash-lite",
+                    "gemini-flash-lite-latest",
+                    "gemini-3.8-flash",
+                ]
+                candidate_models = [chosen_model] + [m for m in fallback_order if m != chosen_model]
+                errors_by_model = []
+                for m_name in candidate_models:
+                    try:
+                        response = client.models.generate_content(
+                            model=m_name,
+                            contents=user_prompt,
+                            config=types.GenerateContentConfig(
+                                system_instruction=system_prompt,
+                                temperature=0.2,
+                            ),
+                        )
+                        tailored_latex = (response.text or "").strip()
+                        if tailored_latex:
+                            chosen_model = m_name
+                            break
+                    except Exception as m_err:
+                        errors_by_model.append(f"{m_name}: {str(m_err)[:120]}")
+                        continue
+                if not tailored_latex and errors_by_model:
+                    raise RuntimeError(" | ".join(errors_by_model[:3]))
+            else:
+                import openai
+                chosen_model = model_name or "gpt-4o"
+                client = openai.OpenAI(api_key=api_key)
+                response = client.chat.completions.create(
+                    model=chosen_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.2,
+                )
+                tailored_latex = (response.choices[0].message.content or "").strip()
+
+            tex_match = re.search(r"(\\documentclass.*\\end\{document\})", tailored_latex, flags=re.DOTALL)
+            if tex_match:
+                tailored_latex = tex_match.group(1).strip()
+            else:
+                if tailored_latex.startswith("```latex"):
+                    tailored_latex = tailored_latex[8:]
+                elif tailored_latex.startswith("```"):
+                    tailored_latex = tailored_latex[3:]
+                if tailored_latex.endswith("```"):
+                    tailored_latex = tailored_latex[:-3]
+                tailored_latex = tailored_latex.strip()
+
+            ats_after = evaluate_ats_match(jd_text, tailored_latex)
+            return tailored_latex, {
+                "score_before": score_baseline,
+                "score_after": ats_after["match_percentage"],
+                "matched_keywords": ats_after["matched_keywords"],
+                "missing_keywords": ats_after["missing_keywords"],
+                "engine_used": f"{provider.upper()} ({chosen_model}) · Keyword Booster",
+            }
+        except Exception as e:
+            fallback_tex = _heuristic_integrate_keywords(current_latex, target_kws)
+            ats_after = evaluate_ats_match(jd_text, fallback_tex)
+            return fallback_tex, {
+                "score_before": score_baseline,
+                "score_after": ats_after["match_percentage"],
+                "matched_keywords": ats_after["matched_keywords"],
+                "missing_keywords": ats_after["missing_keywords"],
+                "ai_error": str(e),
+                "engine_used": "Heuristic Keyword Booster (Fallback)",
+            }
+
+    # Heuristic integration when no AI key is used
+    heur_tex = _heuristic_integrate_keywords(current_latex, target_kws)
+    ats_after = evaluate_ats_match(jd_text, heur_tex)
+    return heur_tex, {
+        "score_before": score_baseline,
+        "score_after": ats_after["match_percentage"],
+        "matched_keywords": ats_after["matched_keywords"],
+        "missing_keywords": ats_after["missing_keywords"],
+        "engine_used": "Heuristic Keyword Booster",
+    }

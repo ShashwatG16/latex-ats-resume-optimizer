@@ -37,7 +37,12 @@ from core.database import (
 )
 from core.templates import DEFAULT_DAISY_TEX, DEFAULT_SHASHWAT_TEX
 from core.compiler import compile_latex_to_pdf
-from core.ats_engine import evaluate_ats_match, tailor_resume_heuristically, tailor_resume_with_ai
+from core.ats_engine import (
+    evaluate_ats_match,
+    tailor_resume_heuristically,
+    tailor_resume_with_ai,
+    integrate_missing_keywords,
+)
 
 # Initialize DB on startup
 init_db(default_daisy_tex=DEFAULT_DAISY_TEX, default_shashwat_tex=DEFAULT_SHASHWAT_TEX)
@@ -80,6 +85,18 @@ class TailorRequest(BaseModel):
 
 class CompileRequest(BaseModel):
     tex_code: str
+
+
+class IntegrateKeywordsRequest(BaseModel):
+    current_latex: str
+    jd_text: str
+    missing_keywords: list = []
+    company: Optional[str] = ""
+    job_title: Optional[str] = ""
+    provider: str = "gemini"
+    model_name: Optional[str] = "gemini-3.6-flash"
+    api_key: Optional[str] = ""
+    base_score_before: Optional[float] = None
 
 
 class SaveAppRequest(BaseModel):
@@ -275,6 +292,46 @@ def api_tailor_resume(req: TailorRequest):
         else:
             result["compile_error"] = err_msg
 
+    return result
+
+
+@app.post("/api/integrate-keywords")
+def api_integrate_keywords(req: IntegrateKeywordsRequest):
+    provider = req.provider.lower()
+    effective_key = (req.api_key or "").strip()
+    if not effective_key:
+        if provider == "gemini":
+            effective_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+        elif provider == "openai":
+            effective_key = os.environ.get("OPENAI_API_KEY") or ""
+
+    boosted_tex, stats = integrate_missing_keywords(
+        current_latex=req.current_latex,
+        jd_text=req.jd_text,
+        missing_keywords=req.missing_keywords,
+        target_company=req.company or "",
+        target_role=req.job_title or "",
+        api_key=effective_key,
+        provider=provider,
+        model_name=req.model_name or "",
+        base_score_before=req.base_score_before,
+    )
+    result = {
+        "tailored_latex": boosted_tex,
+        "stats": stats,
+        "pdf_base64": None,
+        "pages_png": [],
+        "page_count": 1,
+        "compile_error": None,
+    }
+    pdf_bytes, err_msg = compile_latex_to_pdf(boosted_tex)
+    if pdf_bytes:
+        pages_png, page_count = render_pdf_to_png_b64_list(pdf_bytes)
+        result["pdf_base64"] = base64.b64encode(pdf_bytes).decode("utf-8")
+        result["pages_png"] = pages_png
+        result["page_count"] = page_count
+    else:
+        result["compile_error"] = err_msg
     return result
 
 
