@@ -368,6 +368,15 @@ st.markdown(
 )
 
 
+def format_resume_filename(role: str, company: str, username: str, ext: str = "pdf") -> str:
+    """Formats download filename as role_company_username.<ext>."""
+    import re
+    r_part = re.sub(r"[^A-Za-z0-9]+", "_", (role or "Role").strip()).strip("_") or "Role"
+    c_part = re.sub(r"[^A-Za-z0-9]+", "_", (company or "Company").strip()).strip("_") or "Company"
+    u_part = re.sub(r"[^A-Za-z0-9]+", "_", (username or "Candidate").strip()).strip("_") or "Candidate"
+    return f"{r_part}_{c_part}_{u_part}.{ext}"
+
+
 def save_key_to_dotenv(key_name: str, key_val: str):
     """Saves an API key to the local .env file (which is gitignored)."""
     lines = []
@@ -827,7 +836,7 @@ with tab1:
             st.download_button(
                 label="📥 Download .tex",
                 data=st.session_state.get("current_tailored_latex", active_user["master_latex"]),
-                file_name=f"{company_name or active_user['name']}_{job_title or 'Resume'}.tex".replace(" ", "_"),
+                file_name=format_resume_filename(job_title, company_name, active_user["name"], "tex"),
                 mime="text/x-tex",
                 use_container_width=True,
             )
@@ -902,7 +911,7 @@ with tab1:
             st.download_button(
                 label="📥 Download Compiled PDF Document",
                 data=pdf_bytes,
-                file_name=f"{company_name or active_user['name']}_{job_title or 'Resume'}.pdf".replace(" ", "_"),
+                file_name=format_resume_filename(job_title, company_name, active_user["name"], "pdf"),
                 mime="application/pdf",
                 use_container_width=True,
                 type="primary",
@@ -1033,7 +1042,7 @@ with tab2:
                         st.download_button(
                             label="📥 Download PDF",
                             data=pdf_data,
-                            file_name=f"{app['company']}_{app['job_title']}_Resume.pdf",
+                            file_name=format_resume_filename(app["job_title"], app["company"], active_user["name"], "pdf"),
                             mime="application/pdf",
                             key=f"dl_pdf_{app['id']}",
                             use_container_width=True,
@@ -1044,7 +1053,7 @@ with tab2:
                     st.download_button(
                         label="📥 Download .tex",
                         data=app["tailored_latex"],
-                        file_name=f"{app['company']}_{app['job_title']}.tex",
+                        file_name=format_resume_filename(app["job_title"], app["company"], active_user["name"], "tex"),
                         mime="text/x-tex",
                         key=f"dl_tex_{app['id']}",
                         use_container_width=True,

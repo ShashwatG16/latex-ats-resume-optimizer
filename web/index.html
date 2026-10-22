@@ -483,7 +483,7 @@
               </button>
 
               <button
-                @click="downloadTex(tailoredLatex, (form.company || activeUserName) + '_Resume.tex')"
+                @click="downloadTex(tailoredLatex, formatResumeFilename(form.jobTitle, form.company, activeUserName, 'tex'))"
                 class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
               >
                 📥 .tex
@@ -720,7 +720,7 @@
                     📥 PDF
                   </a>
                   <button
-                    @click="downloadTex(app.tailored_latex, app.company + '_' + app.job_title + '.tex')"
+                    @click="downloadTex(app.tailored_latex, formatResumeFilename(app.job_title, app.company, activeUserName, 'tex'))"
                     class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
                   >
                     .tex
@@ -1380,11 +1380,15 @@
             this.showToast(`Created profile for ${created.name}`);
           }
         },
+        formatResumeFilename(role, company, username, ext = 'pdf') {
+          const clean = (s, fallback) => (s || fallback).trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || fallback;
+          return `${clean(role, 'Role')}_${clean(company, 'Company')}_${clean(username, 'Candidate')}.${ext}`;
+        },
         downloadPdf() {
           if (!this.pdfBlobUrl) return;
           const a = document.createElement('a');
           a.href = this.pdfBlobUrl;
-          a.download = `${(this.form.company || this.activeUserName).replace(/\s+/g, '_')}_${(this.form.jobTitle || 'Resume').replace(/\s+/g, '_')}.pdf`;
+          a.download = this.formatResumeFilename(this.form.jobTitle, this.form.company, this.activeUserName, 'pdf');
           a.click();
         },
         downloadTex(texContent, filename) {

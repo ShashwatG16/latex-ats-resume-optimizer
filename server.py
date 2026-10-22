@@ -431,10 +431,14 @@ def api_download_app_pdf(app_id: int):
     pdf_path = os.path.join(PDF_DIR, app_row["pdf_filename"])
     if not os.path.exists(pdf_path):
         raise HTTPException(status_code=404, detail="PDF file missing on disk")
+    user_row = get_user_by_id(app_row["user_id"])
+    uname = (user_row["name"] if user_row else "Candidate").replace(" ", "_")
+    role_clean = (app_row["job_title"] or "Role").replace(" ", "_")
+    comp_clean = (app_row["company"] or "Company").replace(" ", "_")
     return FileResponse(
         pdf_path,
         media_type="application/pdf",
-        filename=f"{app_row['company']}_{app_row['job_title']}_Resume.pdf",
+        filename=f"{role_clean}_{comp_clean}_{uname}.pdf",
     )
 
 
