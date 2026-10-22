@@ -209,28 +209,35 @@ Tailor this resume to match the JD's exact keywords and requirements while follo
 
     try:
         if provider == "gemini":
-            chosen_model = model_name or "gemini-2.5-flash"
+            chosen_model = model_name or "gemini-3.8-flash"
             tailored_latex = ""
-            try:
-                from google import genai
-                from google.genai import types
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model=chosen_model,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        temperature=0.2,
-                    ),
-                )
-                tailored_latex = (response.text or "").strip()
-            except Exception as genai_err:
-                import google.generativeai as legacy_genai
-                legacy_genai.configure(api_key=api_key)
-                fallback_model = chosen_model if chosen_model in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash") else "gemini-2.0-flash"
-                model = legacy_genai.GenerativeModel(fallback_model, system_instruction=system_prompt)
-                response = model.generate_content(user_prompt)
-                tailored_latex = (response.text or "").strip()
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=api_key)
+            candidate_models = [chosen_model] + [
+                m for m in ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-4-argon"]
+                if m != chosen_model
+            ]
+            last_err = None
+            for m_name in candidate_models:
+                try:
+                    response = client.models.generate_content(
+                        model=m_name,
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            temperature=0.2,
+                        ),
+                    )
+                    tailored_latex = (response.text or "").strip()
+                    if tailored_latex:
+                        chosen_model = m_name
+                        break
+                except Exception as m_err:
+                    last_err = m_err
+                    continue
+            if not tailored_latex and last_err:
+                raise last_err
         else:
             import openai
             chosen_model = model_name or "gpt-4o"

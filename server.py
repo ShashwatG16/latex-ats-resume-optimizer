@@ -73,7 +73,7 @@ class TailorRequest(BaseModel):
     company: Optional[str] = ""
     job_title: Optional[str] = ""
     provider: str = "gemini"  # "heuristic", "gemini", "openai"
-    model_name: Optional[str] = "gemini-2.5-flash"
+    model_name: Optional[str] = "gemini-3.8-flash"
     api_key: Optional[str] = ""
     compile_pdf: bool = True
 
@@ -140,7 +140,7 @@ def get_config():
         "has_gemini_key": bool(gemini_key),
         "has_openai_key": bool(openai_key),
         "default_provider": "gemini" if gemini_key else ("openai" if openai_key else "heuristic"),
-        "gemini_models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"],
+        "gemini_models": ["gemini-3.8-flash", "gemini-4-argon", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview"],
         "openai_models": ["gpt-4o", "gpt-4o-mini"],
     }
 
