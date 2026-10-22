@@ -43,6 +43,7 @@ from core.ats_engine import (
     tailor_resume_with_ai,
     integrate_missing_keywords,
 )
+from core.job_scraper import extract_job_from_url
 
 # Initialize DB on startup
 init_db(default_daisy_tex=DEFAULT_DAISY_TEX, default_shashwat_tex=DEFAULT_SHASHWAT_TEX)
@@ -85,6 +86,13 @@ class TailorRequest(BaseModel):
 
 class CompileRequest(BaseModel):
     tex_code: str
+
+
+class ExtractUrlRequest(BaseModel):
+    url: str
+    provider: str = "gemini"
+    model_name: Optional[str] = "gemini-3.6-flash"
+    api_key: Optional[str] = ""
 
 
 class IntegrateKeywordsRequest(BaseModel):
@@ -200,6 +208,25 @@ def api_update_master(user_id: int, req: UpdateMasterRequest):
         raise HTTPException(status_code=404, detail="User not found")
     update_user_master_latex(user_id, req.master_latex, req.headline)
     return get_user_by_id(user_id)
+
+
+@app.post("/api/extract-url")
+def api_extract_job_url(req: ExtractUrlRequest):
+    provider = req.provider.lower()
+    effective_key = (req.api_key or "").strip()
+    if not effective_key:
+        if provider == "gemini":
+            effective_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+        elif provider == "openai":
+            effective_key = os.environ.get("OPENAI_API_KEY") or ""
+
+    res = extract_job_from_url(
+        url=req.url,
+        api_key=effective_key,
+        provider=provider,
+        model_name=req.model_name or "",
+    )
+    return res
 
 
 @app.post("/api/extract-jd")

@@ -45,6 +45,9 @@ from core.ats_engine import (
     tailor_resume_with_ai,
     integrate_missing_keywords,
 )
+import core.job_scraper as job_scraper_mod
+importlib.reload(job_scraper_mod)
+from core.job_scraper import extract_job_from_url
 
 # Page configuration
 st.set_page_config(
@@ -590,29 +593,88 @@ tab1, tab2, tab3 = st.tabs([
 # TAB 1: TAILOR & OVERLEAF STUDIO
 # ==============================================================================
 with tab1:
-    with st.expander("📋 **Step 1: Target Job Opportunity & JD Input** (Click to collapse/expand for full-screen IDE)", expanded=True):
-        r1_c1, r1_c2, r1_c3, r1_c4, r1_c5 = st.columns([1.4, 1.5, 0.9, 1.1, 1.3])
+    for field_key in ("form_company", "form_job_title", "form_req_id", "form_location", "form_job_url", "form_jd_text"):
+        if field_key not in st.session_state:
+            st.session_state[field_key] = ""
+
+    with st.expander("🔗 **Step 1: Paste Job Link (Source of Truth) — Auto-Fetch Role, Company & JD**", expanded=True):
+        url_c1, url_c2, url_c3 = st.columns([2.4, 0.9, 1.1])
+        with url_c1:
+            job_url = st.text_input(
+                "🔗 Job Posting URL (Primary Source of Truth)",
+                placeholder="Paste LinkedIn, Workday, Greenhouse, Lever, or corporate career link (https://...)",
+                key="form_job_url",
+            )
+        with url_c2:
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+            fetch_url_clicked = st.button(
+                "🌐 Auto-Fetch Job Details",
+                use_container_width=True,
+                help="Scrapes Role Title, Company, Req ID, Location, and full JD from the link",
+            )
+        with url_c3:
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+            fetch_and_tailor_clicked = st.button(
+                "⚡ Fetch Link & Tailor Resume",
+                use_container_width=True,
+                type="primary",
+                help="One-click: extracts all job details from URL, tailors your LaTeX resume, and compiles live PDF",
+            )
+
+        auto_tailor_after_fetch = False
+        if fetch_url_clicked or fetch_and_tailor_clicked:
+            if not job_url.strip():
+                st.error("Please paste a Job Posting URL first.")
+            else:
+                active_prov = "gemini" if ai_provider == "Google Gemini AI" else ("openai" if ai_provider == "OpenAI GPT-4o" else "heuristic")
+                with st.spinner("🌐 Accessing job link & extracting Role, Company, Location, Req ID, and full Job Description..."):
+                    scraped = extract_job_from_url(
+                        url=job_url,
+                        api_key=api_key,
+                        provider=active_prov,
+                        model_name=model_name,
+                    )
+                    if scraped.get("success"):
+                        if scraped.get("company"):
+                            st.session_state["form_company"] = scraped["company"]
+                        if scraped.get("job_title"):
+                            st.session_state["form_job_title"] = scraped["job_title"]
+                        if scraped.get("requisition_id"):
+                            st.session_state["form_req_id"] = scraped["requisition_id"]
+                        if scraped.get("location"):
+                            st.session_state["form_location"] = scraped["location"]
+                        if scraped.get("job_description"):
+                            st.session_state["form_jd_text"] = scraped["job_description"]
+                        st.toast(
+                            f"Fetched: {scraped.get('job_title') or 'Role'} at {scraped.get('company') or 'Company'}!",
+                            icon="🌐",
+                        )
+                        if fetch_and_tailor_clicked:
+                            auto_tailor_after_fetch = True
+                        else:
+                            st.rerun()
+                    else:
+                        st.warning(scraped.get("error") or "Could not extract job details from this link.")
+
+        r1_c1, r1_c2, r1_c3, r1_c4 = st.columns([1.5, 1.7, 0.9, 1.2])
         with r1_c1:
-            company_name = st.text_input("Target Company *", placeholder="e.g. Deloitte, Google, Microsoft")
+            company_name = st.text_input("Target Company *", placeholder="Auto-filled from link or enter manually", key="form_company")
         with r1_c2:
-            job_title = st.text_input("Target Role Title *", placeholder="e.g. Analyst | D365 F&O SCM")
+            job_title = st.text_input("Target Role Title *", placeholder="Auto-filled from link or enter manually", key="form_job_title")
         with r1_c3:
-            req_id = st.text_input("Req ID", placeholder="e.g. 108410")
+            req_id = st.text_input("Req ID", placeholder="e.g. 108410", key="form_req_id")
         with r1_c4:
-            job_location = st.text_input("Location", placeholder="Bengaluru / Remote")
-        with r1_c5:
-            job_url = st.text_input("Job Posting URL", placeholder="https://...")
+            job_location = st.text_input("Location", placeholder="Bengaluru / Remote", key="form_location")
 
         jd_col_left, jd_col_right = st.columns([2.3, 1], gap="medium")
         with jd_col_right:
-            uploaded_jd_file = st.file_uploader("📎 Upload JD (.pdf or .txt)", type=["pdf", "txt"])
-            default_jd_text = ""
+            uploaded_jd_file = st.file_uploader("📎 Or Upload JD File (.pdf / .txt)", type=["pdf", "txt"])
             if uploaded_jd_file:
                 if uploaded_jd_file.name.endswith(".pdf"):
                     reader = PdfReader(uploaded_jd_file)
-                    default_jd_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+                    st.session_state["form_jd_text"] = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
                 else:
-                    default_jd_text = uploaded_jd_file.read().decode("utf-8", errors="ignore")
+                    st.session_state["form_jd_text"] = uploaded_jd_file.read().decode("utf-8", errors="ignore")
 
             tailor_clicked = st.button(
                 "🚀 Analyze JD & Tailor Resume",
@@ -622,14 +684,14 @@ with tab1:
 
         with jd_col_left:
             jd_input = st.text_area(
-                "Paste Full Job Description (Responsibilities, Skills & Qualifications):",
-                value=default_jd_text,
+                "Full Job Description (Auto-populated from Job Link, or paste/edit below):",
                 height=145,
-                placeholder="Paste the complete job description here to extract high-value ATS keywords and tailor your LaTeX resume...",
+                placeholder="Paste a Job Link above and click 'Auto-Fetch Job Details', or paste the job description manually...",
+                key="form_jd_text",
             )
 
-    # Trigger Tailoring
-    if tailor_clicked:
+    # Trigger Tailoring (either via button or via "Fetch Link & Tailor Resume")
+    if tailor_clicked or auto_tailor_after_fetch:
         if not jd_input.strip():
             st.error("Please paste or upload a Job Description first.")
         elif ai_provider != "Heuristic Engine (Free / Offline)" and not api_key:

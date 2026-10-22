@@ -322,6 +322,31 @@
 
         <!-- Expandable Form Body -->
         <div v-show="jdPanelOpen" class="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <!-- Top Full-Width Row: Job Link Source of Truth -->
+          <div class="lg:col-span-12 flex flex-wrap items-center gap-2.5 p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/20">
+            <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">🔗 Job Link (Source of Truth):</span>
+            <input
+              v-model="form.jobUrl"
+              type="url"
+              placeholder="Paste LinkedIn, Workday, Greenhouse, Lever, or career portal URL (https://...)"
+              class="flex-1 min-w-[260px] px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-indigo-500"
+            />
+            <button
+              @click="fetchFromJobUrl(false)"
+              :disabled="isFetchingUrl"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white transition"
+            >
+              {{ isFetchingUrl ? '⏳ Fetching...' : '🌐 Auto-Fetch Job Details' }}
+            </button>
+            <button
+              @click="fetchFromJobUrl(true)"
+              :disabled="isFetchingUrl || isTailoring"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-sm transition"
+            >
+              ⚡ Fetch Link &amp; Tailor Resume
+            </button>
+          </div>
+
           <!-- Left 5 Cols: Role Metadata -->
           <div class="lg:col-span-5 flex flex-col gap-3">
             <div class="grid grid-cols-2 gap-3">
@@ -928,6 +953,7 @@
           atsStats: null,
 
           isTailoring: false,
+          isFetchingUrl: false,
           isCompiling: false,
           isSavingApp: false,
           compileError: null,
@@ -1061,6 +1087,43 @@
           if (!this.selectedUserId) return;
           const res = await fetch(`/api/users/${this.selectedUserId}/applications`);
           this.applications = await res.json();
+        },
+        async fetchFromJobUrl(autoTailor = false) {
+          if (!this.form.jobUrl.trim()) {
+            this.showToast('Please paste a Job Posting URL first.', 'error');
+            return;
+          }
+          this.isFetchingUrl = true;
+          try {
+            const res = await fetch('/api/extract-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: this.form.jobUrl,
+                provider: this.aiConfig.provider,
+                model_name: this.aiConfig.modelName,
+                api_key: this.aiConfig.apiKeyInput,
+              }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              if (data.company) this.form.company = data.company;
+              if (data.job_title) this.form.jobTitle = data.job_title;
+              if (data.requisition_id) this.form.reqId = data.requisition_id;
+              if (data.location) this.form.location = data.location;
+              if (data.job_description) this.form.jdText = data.job_description;
+              this.showToast(`Fetched: ${data.job_title || 'Role'} at ${data.company || 'Company'}!`);
+              if (autoTailor) {
+                await this.runTailorResume();
+              }
+            } else {
+              this.showToast(data.error || 'Could not extract job details from URL', 'error');
+            }
+          } catch (e) {
+            this.showToast('Failed to fetch job link', 'error');
+          } finally {
+            this.isFetchingUrl = false;
+          }
         },
         async onUploadJdFile(ev) {
           const file = ev.target.files[0];
