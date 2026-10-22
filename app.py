@@ -14,6 +14,9 @@ import io
 from datetime import datetime
 from pypdf import PdfReader
 from dotenv import load_dotenv
+import importlib
+import core.ats_engine as ats_engine_mod
+importlib.reload(ats_engine_mod)
 
 # Load environment variables from .env (project root or user home)
 ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
