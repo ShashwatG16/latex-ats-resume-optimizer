@@ -15,6 +15,8 @@ from datetime import datetime
 from pypdf import PdfReader
 from dotenv import load_dotenv
 import importlib
+import core.guardrails as guardrails_mod
+importlib.reload(guardrails_mod)
 import core.ats_engine as ats_engine_mod
 importlib.reload(ats_engine_mod)
 
@@ -799,6 +801,14 @@ with tab1:
             )
 
         with st.expander("🔍 **View Matched & Missing ATS Keywords Breakdown & One-Click Booster**", expanded=True):
+            if stats.get("guardrail_restorations"):
+                st.info(
+                    "🛡️ **Zero-Fabrication Guardrail Enforced:** Automatically locked & restored factual fields: "
+                    + ", ".join(stats["guardrail_restorations"])
+                )
+            else:
+                st.caption("🛡️ **Zero-Fabrication Guardrail Verified:** 100% of job titles, employers, dates, header, education & honors locked to Master Resume.")
+
             kw_c1, kw_c2 = st.columns(2)
             with kw_c1:
                 st.caption(f"✅ **Matched in Tailored Resume ({len(stats['matched_keywords'])})**")

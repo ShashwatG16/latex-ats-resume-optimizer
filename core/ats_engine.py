@@ -7,6 +7,11 @@ import re
 import json
 from collections import Counter
 from typing import Dict, List, Tuple, Set
+from core.guardrails import (
+    mask_immutable_facts_for_ai,
+    restore_immutable_tokens,
+    enforce_factual_guardrails,
+)
 
 
 COMMON_STOPWORDS = {
@@ -180,32 +185,34 @@ def tailor_resume_with_ai(
     provider: str = "gemini",
     model_name: str = "",
 ) -> Tuple[str, Dict]:
+    # Pre-mask all immutable factual headers, job titles, employers, dates, education & honors
+    masked_master, token_map = mask_immutable_facts_for_ai(master_latex)
+
     system_prompt = """You are an expert ATS Resume Optimization Specialist.
-Your job is to tailor the candidate's LaTeX resume to match the Job Description (JD) to achieve the highest possible ATS match score.
+Your job is to tailor ONLY the Summary, Skills, and Experience/Project bullet descriptions in the candidate's LaTeX resume to match the Job Description (JD).
 
-CRITICAL RULES AND STRICT GUARDRAILS (ZERO FABRICATION):
-1. DO NOT change or invent degrees, universities, GPAs, or dates of education.
-2. DO NOT change job titles, employer names, or employment dates.
-3. DO NOT invent false certifications, patents, or awards the candidate does not have.
-4. YOU CAN:
-   - Reorder and reframe existing skills to prioritize the tools, methodologies, and terminology used in the JD.
-   - Refine bullet points in Experience and Projects to emphasize matching domains (e.g. SCM, testing, data migration, cloud, etc.) using truthful STAR statements.
-   - Tailor the Professional Summary to clearly align the candidate's genuine background with the target role and company.
-   - Ensure the output is valid LaTeX that compiles cleanly on pdflatex without package errors.
-   - Maintain strict 1-page geometry.
+CRITICAL ZERO-FABRICATION RULES (STRICTLY ENFORCED):
+1. All factual headers, job titles, company names, dates, project headings, education, and honors have been locked with `% __IMMUTABLE_...__` placeholder lines.
+2. You MUST keep every single `% __IMMUTABLE_...__` placeholder line in its exact position without deleting, renaming, or adding new `\\resumeSubheading` or `\\resumeProjectHeading` macros!
+3. DO NOT change or invent job titles, designations, company names, dates, degrees, or metrics.
+4. YOU MAY ONLY EDIT:
+   - The `\\section{Professional Summary}` item text.
+   - The `\\section{Core Skills ...}` / `\\section{Technical Skills ...}` items.
+   - The `\\resumeItem{...}` bullet points under Experience and Projects (reframe truthfully using JD keywords while keeping all real metrics and facts intact).
+5. Ensure valid pdflatex syntax (escape `\\&`, `\\%`, `\\_`, `\\#`) and strict 1-page length.
 
-Return ONLY the raw LaTeX code, starting from \\documentclass and ending with \\end{document}. No markdown fences (```latex)."""
+Return the complete output starting with `% __IMMUTABLE_PREAMBLE_AND_HEADER__` and ending with `\\end{document}`. No markdown fences."""
 
-    user_prompt = f"""Target Company: {target_company}
-Target Role: {target_role}
+    user_prompt = f"""Target Company (applying to): {target_company}
+Target Role (applying for — never claim this as a past title): {target_role}
 
 Job Description:
 {jd_text}
 
-Candidate's Current Master LaTeX Resume:
-{master_latex}
+Candidate's Master LaTeX Resume (with immutable factual blocks locked):
+{masked_master}
 
-Tailor this resume to match the JD's exact keywords and requirements while following all strict zero-fabrication rules."""
+Tailor ONLY the Summary, Skills, and `\\resumeItem` bullets to match the JD keywords, preserving every `% __IMMUTABLE_...__` line in place."""
 
     try:
         if provider == "gemini":
@@ -258,17 +265,23 @@ Tailor this resume to match the JD's exact keywords and requirements while follo
             tailored_latex = (response.choices[0].message.content or "").strip()
 
         # Strip markdown fences if model included them
+        if tailored_latex.startswith("```latex"):
+            tailored_latex = tailored_latex[8:]
+        elif tailored_latex.startswith("```"):
+            tailored_latex = tailored_latex[3:]
+        if tailored_latex.endswith("```"):
+            tailored_latex = tailored_latex[:-3]
+        tailored_latex = tailored_latex.strip()
+
+        # Restore masked immutable tokens back to exact master LaTeX strings
+        tailored_latex = restore_immutable_tokens(tailored_latex, token_map)
+
         tex_match = re.search(r"(\\documentclass.*\\end\{document\})", tailored_latex, flags=re.DOTALL)
         if tex_match:
             tailored_latex = tex_match.group(1).strip()
-        else:
-            if tailored_latex.startswith("```latex"):
-                tailored_latex = tailored_latex[8:]
-            elif tailored_latex.startswith("```"):
-                tailored_latex = tailored_latex[3:]
-            if tailored_latex.endswith("```"):
-                tailored_latex = tailored_latex[:-3]
-            tailored_latex = tailored_latex.strip()
+
+        # Hard programmatic guardrail: restore any altered job titles, employers, dates, header, or education
+        tailored_latex, guardrail_restorations = enforce_factual_guardrails(master_latex, tailored_latex)
 
         ats_eval = evaluate_ats_match(jd_text, tailored_latex)
         ats_before = evaluate_ats_match(jd_text, master_latex)
@@ -279,6 +292,7 @@ Tailor this resume to match the JD's exact keywords and requirements while follo
             "matched_keywords": ats_eval["matched_keywords"],
             "missing_keywords": ats_eval["missing_keywords"],
             "engine_used": f"{provider.upper()} ({chosen_model})",
+            "guardrail_restorations": guardrail_restorations,
         }
     except Exception as e:
         tailored, stats = tailor_resume_heuristically(master_latex, jd_text, target_company, target_role)
@@ -366,20 +380,21 @@ def integrate_missing_keywords(
     kws_comma_str = ", ".join(target_kws[:30])
 
     if provider in ("gemini", "openai") and api_key:
+        masked_current, token_map = mask_immutable_facts_for_ai(current_latex)
+
         system_prompt = """You are an expert LaTeX ATS Resume Optimization Specialist.
 Your task is to naturally and seamlessly integrate the provided list of MISSING JD KEYWORDS into the candidate's existing LaTeX resume so the ATS scanner matches every single one of them, while reading naturally to a human recruiter.
 
 STRICT ZERO-FABRICATION GUARDRAILS:
-1. NEVER change degrees, university names, GPAs, or education dates.
-2. NEVER change employer names, job titles/designations, or employment dates.
-3. NEVER invent fake companies, fake certifications, or fake awards.
-4. HOW TO NATURALLY INTEGRATE THE MISSING KEYWORDS:
-   - Weave domain/action keywords naturally into existing Experience and Project bullet points where contextually truthful (using exact keyword spelling so regex word-boundary checks match).
+1. All factual headers, job titles, employers, dates, project headings, education, and honors are locked with `% __IMMUTABLE_...__` placeholder lines.
+2. Keep every single `% __IMMUTABLE_...__` line untouched in its exact place. NEVER add or modify job titles, companies, dates, or degrees!
+3. HOW TO NATURALLY INTEGRATE THE MISSING KEYWORDS:
+   - Weave domain/action keywords naturally into existing `\\resumeItem{...}` Experience and Project bullet points where contextually truthful (using exact keyword spelling).
    - Integrate technical/tool/methodology keywords into the Core Skills / Technical Competencies categories.
    - Refine the Professional Summary to naturally incorporate high-priority role keywords.
-   - Keep the document strictly to 1 single page and ensure 100% valid pdflatex syntax (escape &, %, _, # properly, e.g., \\&).
+   - Keep the document strictly to 1 single page and ensure 100% valid pdflatex syntax (escape \\&, \\%, \\_, \\#).
 
-Return ONLY the complete raw LaTeX code from \\documentclass to \\end{document} with no markdown fences."""
+Return ONLY the complete raw code starting with `% __IMMUTABLE_PREAMBLE_AND_HEADER__` and ending with `\\end{document}` with no markdown fences."""
 
         user_prompt = f"""Target Company: {target_company or 'Target Organization'}
 Target Role: {target_role or 'Target Position'}
@@ -390,10 +405,10 @@ MISSING KEYWORDS THAT MUST BE NATURALLY INTEGRATED (use exact terms):
 Job Description Context:
 {jd_text}
 
-Current LaTeX Resume:
-{current_latex}
+Current LaTeX Resume (with immutable factual blocks locked):
+{masked_current}
 
-Please naturally weave the missing keywords above into the Skills, Summary, and Experience/Project bullets and return ONLY the raw compilable LaTeX code."""
+Naturally weave the missing keywords above into the Skills, Summary, and `\\resumeItem` bullets, keeping every `% __IMMUTABLE_...__` line intact."""
 
         try:
             tailored_latex = ""
@@ -445,17 +460,23 @@ Please naturally weave the missing keywords above into the Skills, Summary, and 
                 )
                 tailored_latex = (response.choices[0].message.content or "").strip()
 
+            if tailored_latex.startswith("```latex"):
+                tailored_latex = tailored_latex[8:]
+            elif tailored_latex.startswith("```"):
+                tailored_latex = tailored_latex[3:]
+            if tailored_latex.endswith("```"):
+                tailored_latex = tailored_latex[:-3]
+            tailored_latex = tailored_latex.strip()
+
+            # Restore masked immutable tokens back to exact master LaTeX strings
+            tailored_latex = restore_immutable_tokens(tailored_latex, token_map)
+
             tex_match = re.search(r"(\\documentclass.*\\end\{document\})", tailored_latex, flags=re.DOTALL)
             if tex_match:
                 tailored_latex = tex_match.group(1).strip()
-            else:
-                if tailored_latex.startswith("```latex"):
-                    tailored_latex = tailored_latex[8:]
-                elif tailored_latex.startswith("```"):
-                    tailored_latex = tailored_latex[3:]
-                if tailored_latex.endswith("```"):
-                    tailored_latex = tailored_latex[:-3]
-                tailored_latex = tailored_latex.strip()
+
+            # Hard programmatic guardrail: restore any altered job titles, employers, dates, header, or education
+            tailored_latex, guardrail_restorations = enforce_factual_guardrails(current_latex, tailored_latex)
 
             ats_after = evaluate_ats_match(jd_text, tailored_latex)
             return tailored_latex, {
@@ -464,6 +485,7 @@ Please naturally weave the missing keywords above into the Skills, Summary, and 
                 "matched_keywords": ats_after["matched_keywords"],
                 "missing_keywords": ats_after["missing_keywords"],
                 "engine_used": f"{provider.upper()} ({chosen_model}) · Keyword Booster",
+                "guardrail_restorations": guardrail_restorations,
             }
         except Exception as e:
             fallback_tex = _heuristic_integrate_keywords(current_latex, target_kws)
