@@ -178,6 +178,7 @@ def tailor_resume_with_ai(
     target_role: str,
     api_key: str,
     provider: str = "gemini",
+    model_name: str = "",
 ) -> Tuple[str, Dict]:
     system_prompt = """You are an expert ATS Resume Optimization Specialist.
 Your job is to tailor the candidate's LaTeX resume to match the Job Description (JD) to achieve the highest possible ATS match score.
@@ -208,31 +209,54 @@ Tailor this resume to match the JD's exact keywords and requirements while follo
 
     try:
         if provider == "gemini":
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
-            response = model.generate_content(user_prompt)
-            tailored_latex = response.text.strip()
+            chosen_model = model_name or "gemini-2.5-flash"
+            tailored_latex = ""
+            try:
+                from google import genai
+                from google.genai import types
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model=chosen_model,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=0.2,
+                    ),
+                )
+                tailored_latex = (response.text or "").strip()
+            except Exception as genai_err:
+                import google.generativeai as legacy_genai
+                legacy_genai.configure(api_key=api_key)
+                fallback_model = chosen_model if chosen_model in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash") else "gemini-2.0-flash"
+                model = legacy_genai.GenerativeModel(fallback_model, system_instruction=system_prompt)
+                response = model.generate_content(user_prompt)
+                tailored_latex = (response.text or "").strip()
         else:
             import openai
+            chosen_model = model_name or "gpt-4o"
             client = openai.OpenAI(api_key=api_key)
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=chosen_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,
             )
-            tailored_latex = response.choices[0].message.content.strip()
+            tailored_latex = (response.choices[0].message.content or "").strip()
 
-        if tailored_latex.startswith("```latex"):
-            tailored_latex = tailored_latex[8:]
-        elif tailored_latex.startswith("```"):
-            tailored_latex = tailored_latex[3:]
-        if tailored_latex.endswith("```"):
-            tailored_latex = tailored_latex[:-3]
-        tailored_latex = tailored_latex.strip()
+        # Strip markdown fences if model included them
+        tex_match = re.search(r"(\\documentclass.*\\end\{document\})", tailored_latex, flags=re.DOTALL)
+        if tex_match:
+            tailored_latex = tex_match.group(1).strip()
+        else:
+            if tailored_latex.startswith("```latex"):
+                tailored_latex = tailored_latex[8:]
+            elif tailored_latex.startswith("```"):
+                tailored_latex = tailored_latex[3:]
+            if tailored_latex.endswith("```"):
+                tailored_latex = tailored_latex[:-3]
+            tailored_latex = tailored_latex.strip()
 
         ats_eval = evaluate_ats_match(jd_text, tailored_latex)
         ats_before = evaluate_ats_match(jd_text, master_latex)
@@ -242,8 +266,10 @@ Tailor this resume to match the JD's exact keywords and requirements while follo
             "score_after": ats_eval["match_percentage"],
             "matched_keywords": ats_eval["matched_keywords"],
             "missing_keywords": ats_eval["missing_keywords"],
+            "engine_used": f"{provider.upper()} ({chosen_model})",
         }
     except Exception as e:
         tailored, stats = tailor_resume_heuristically(master_latex, jd_text, target_company, target_role)
         stats["ai_error"] = str(e)
+        stats["engine_used"] = "Heuristic Fallback (AI Error)"
         return tailored, stats

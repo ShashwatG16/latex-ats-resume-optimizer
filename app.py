@@ -11,7 +11,13 @@ import base64
 import os
 from datetime import datetime
 from pypdf import PdfReader
+from dotenv import load_dotenv
 import io
+
+# Load environment variables from .env (project root or user home)
+ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(ENV_FILE_PATH)
+load_dotenv(os.path.expanduser("~/.env"))
 
 from core.database import (
     init_db,
@@ -30,6 +36,66 @@ from core.database import (
 from core.templates import DEFAULT_DAISY_TEX, DEFAULT_SHASHWAT_TEX
 from core.compiler import compile_latex_to_pdf, pdf_to_base64_data_uri
 from core.ats_engine import evaluate_ats_match, tailor_resume_heuristically, tailor_resume_with_ai
+
+
+def render_pdf_preview(pdf_bytes: bytes, height: int = 680, key_prefix: str = "pdf"):
+    """
+    Renders PDF bytes reliably in modern browsers where <iframe src="data:application/pdf..."> is blocked.
+    Uses Streamlit's native st.pdf component (streamlit-pdf) and provides a high-DPI page image fallback via PyMuPDF.
+    """
+    try:
+        doc_reader = PdfReader(io.BytesIO(pdf_bytes))
+        num_pages = len(doc_reader.pages)
+        if num_pages == 1:
+            st.caption("📄 **Page Count: 1 page** (Strict 1-page ATS compliance verified)")
+        else:
+            st.warning(f"⚠️ **Page Count: {num_pages} pages** (Exceeds single-page target)")
+    except Exception:
+        pass
+
+    view_mode = st.radio(
+        "Preview Mode:",
+        ["Interactive PDF Viewer", "High-DPI Page Image (100% Browser Compatible)"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key=f"{key_prefix}_view_mode",
+    )
+
+    if view_mode == "Interactive PDF Viewer":
+        try:
+            st.pdf(pdf_bytes, height=height, key=f"{key_prefix}_st_pdf")
+            return
+        except Exception:
+            pass
+
+    # Fallback / Image mode using PyMuPDF (fitz)
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        for page_idx in range(len(doc)):
+            page = doc.load_page(page_idx)
+            pix = page.get_pixmap(dpi=180)
+            img_bytes = pix.tobytes("png")
+            st.image(img_bytes, caption=f"Page {page_idx + 1} of {len(doc)}", use_container_width=True)
+        doc.close()
+    except Exception as e:
+        b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+        st.markdown(
+            f'<embed src="data:application/pdf;base64,{b64_pdf}" width="100%" height="{height}px" type="application/pdf">',
+            unsafe_allow_html=True,
+        )
+
+
+def save_key_to_dotenv(key_name: str, key_val: str):
+    """Saves an API key to the local .env file (which is gitignored)."""
+    lines = []
+    if os.path.exists(ENV_FILE_PATH):
+        with open(ENV_FILE_PATH, "r", encoding="utf-8") as f:
+            lines = [line for line in f.readlines() if not line.strip().startswith(f"{key_name}=")]
+    lines.append(f"{key_name}={key_val.strip()}\n")
+    with open(ENV_FILE_PATH, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    os.environ[key_name] = key_val.strip()
 
 # Set page config
 st.set_page_config(
@@ -118,14 +184,66 @@ if selected_user_name == "+ Add New User":
 
 # Active user object
 active_user = next(u for u in users if u["name"] == selected_user_name)
+if st.session_state.get("active_user_id") != active_user["id"]:
+    st.session_state["active_user_id"] = active_user["id"]
+    st.session_state["current_tailored_latex"] = active_user["master_latex"]
+    st.session_state["current_pdf_bytes"] = None
+    st.session_state["current_ats_stats"] = None
+    st.session_state["master_pdf_bytes"] = None
+
 st.sidebar.info(f"**Candidate:** {active_user['name']}\n\n**Email:** {active_user['email']}\n\n**Headline:** {active_user.get('headline', 'N/A')}")
 
 st.sidebar.divider()
-st.sidebar.markdown("### AI Optimizer Settings (Optional)")
-ai_provider = st.sidebar.selectbox("Engine:", ["Heuristic Engine (Free / Offline)", "Google Gemini AI", "OpenAI GPT-4o"])
+st.sidebar.markdown("### 🤖 AI Optimizer Settings")
+
+env_gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+env_openai_key = os.environ.get("OPENAI_API_KEY") or ""
+
+default_engine_idx = 1 if env_gemini_key else (2 if env_openai_key else 0)
+ai_provider = st.sidebar.selectbox(
+    "Engine:",
+    ["Heuristic Engine (Free / Offline)", "Google Gemini AI", "OpenAI GPT-4o"],
+    index=default_engine_idx,
+)
 api_key = ""
-if ai_provider != "Heuristic Engine (Free / Offline)":
-    api_key = st.sidebar.text_input("Enter API Key:", type="password", help="Your API key stays local and is not saved to disk.")
+model_name = ""
+
+if ai_provider == "Google Gemini AI":
+    model_name = st.sidebar.selectbox(
+        "Gemini Model:",
+        ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"],
+        index=0,
+    )
+    api_key_input = st.sidebar.text_input(
+        "Gemini API Key:",
+        value=env_gemini_key,
+        type="password",
+        help="Get a free Gemini API key at https://aistudio.google.com/app/apikey",
+    )
+    api_key = api_key_input.strip()
+    if not api_key:
+        st.sidebar.warning("🔑 **Need a Gemini API Key?**\n1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)\n2. Click **Create API Key** (Free tier)\n3. Paste it above!")
+    elif api_key != env_gemini_key:
+        if st.sidebar.button("💾 Save Key to local .env"):
+            save_key_to_dotenv("GEMINI_API_KEY", api_key)
+            st.sidebar.success("Saved GEMINI_API_KEY to .env!")
+elif ai_provider == "OpenAI GPT-4o":
+    model_name = st.sidebar.selectbox(
+        "OpenAI Model:",
+        ["gpt-4o", "gpt-4o-mini"],
+        index=0,
+    )
+    api_key_input = st.sidebar.text_input(
+        "OpenAI API Key:",
+        value=env_openai_key,
+        type="password",
+        help="Enter your OpenAI API key from platform.openai.com",
+    )
+    api_key = api_key_input.strip()
+    if api_key and api_key != env_openai_key:
+        if st.sidebar.button("💾 Save Key to local .env"):
+            save_key_to_dotenv("OPENAI_API_KEY", api_key)
+            st.sidebar.success("Saved OPENAI_API_KEY to .env!")
 
 st.sidebar.divider()
 st.sidebar.caption("⚡ Built with Streamlit, Python & TeXLive Cloud Engine\n\n🛡️ Strict Zero-Lie Guardrails Enforced")
@@ -186,15 +304,17 @@ with tab1:
     if tailor_clicked:
         if not jd_input.strip():
             st.error("Please paste or upload a Job Description to proceed.")
+        elif ai_provider != "Heuristic Engine (Free / Offline)" and not api_key:
+            st.error(f"Please enter your **{ai_provider} API Key** in the left sidebar (or switch Engine to Heuristic Engine).")
         else:
             with st.spinner("Analyzing JD keywords and tailoring LaTeX code with Zero-Fabrication guardrails..."):
                 if ai_provider == "Google Gemini AI" and api_key:
                     new_tex, stats = tailor_resume_with_ai(
-                        active_user["master_latex"], jd_input, company_name, job_title, api_key, provider="gemini"
+                        active_user["master_latex"], jd_input, company_name, job_title, api_key, provider="gemini", model_name=model_name
                     )
                 elif ai_provider == "OpenAI GPT-4o" and api_key:
                     new_tex, stats = tailor_resume_with_ai(
-                        active_user["master_latex"], jd_input, company_name, job_title, api_key, provider="openai"
+                        active_user["master_latex"], jd_input, company_name, job_title, api_key, provider="openai", model_name=model_name
                     )
                 else:
                     new_tex, stats = tailor_resume_heuristically(
@@ -202,13 +322,18 @@ with tab1:
                     )
 
                 st.session_state["current_tailored_latex"] = new_tex
+                st.session_state["latex_code_editor"] = new_tex
                 st.session_state["current_ats_stats"] = stats
+
+                if stats.get("ai_error"):
+                    st.error(f"⚠️ AI Tailoring Error (fell back to Heuristic Engine): {stats['ai_error']}")
 
                 # Compile immediately
                 pdf_bytes, err_msg = compile_latex_to_pdf(new_tex)
                 if pdf_bytes:
                     st.session_state["current_pdf_bytes"] = pdf_bytes
-                    st.success("Resume tailored & compiled successfully!")
+                    if not stats.get("ai_error"):
+                        st.success(f"Resume tailored ({stats.get('engine_used', 'Heuristic')}) & compiled to PDF successfully!")
                 else:
                     st.warning(f"Tailoring complete, but PDF compile warning: {err_msg}")
 
@@ -319,21 +444,18 @@ with tab1:
                 type="primary",
             )
             
-            # Embed PDF using HTML iframe
-            base64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
-            pdf_display = f"""
-                <iframe 
-                    src="data:application/pdf;base64,{base64_pdf}#toolbar=1&navpanes=0&scrollbar=1" 
-                    width="100%" 
-                    height="680" 
-                    type="application/pdf"
-                    style="border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);"
-                >
-                </iframe>
-            """
-            st.markdown(pdf_display, unsafe_allow_html=True)
+            # Render PDF using native streamlit-pdf viewer + PyMuPDF image fallback
+            render_pdf_preview(pdf_bytes, height=680, key_prefix="tailored_pdf")
         else:
-            st.info("No PDF compiled yet. Click **'Analyze JD & Tailor Resume'** or **'Re-Compile PDF'** to generate live preview.")
+            if st.button("⚡ Compile Current LaTeX to PDF Preview", use_container_width=True):
+                with st.spinner("Compiling LaTeX to PDF..."):
+                    pdf_bytes, err = compile_latex_to_pdf(st.session_state["current_tailored_latex"])
+                    if pdf_bytes:
+                        st.session_state["current_pdf_bytes"] = pdf_bytes
+                        st.rerun()
+                    else:
+                        st.error(f"Compilation failed: {err}")
+            st.info("No PDF compiled yet. Click **'Compile Current LaTeX to PDF Preview'**, **'Analyze JD & Tailor Resume'**, or **'Re-Compile PDF'** to generate live preview.")
 
 
 # ==============================================================================
@@ -476,10 +598,6 @@ with tab3:
                     st.error(f"Error compiling: {m_err}")
 
         if st.session_state.get("master_pdf_bytes"):
-            b64_m = base64.b64encode(st.session_state["master_pdf_bytes"]).decode("utf-8")
-            st.markdown(
-                f'<iframe src="data:application/pdf;base64,{b64_m}#toolbar=1" width="100%" height="620" type="application/pdf" style="border: 1px solid #cbd5e1; border-radius: 8px;"></iframe>',
-                unsafe_allow_html=True,
-            )
+            render_pdf_preview(st.session_state["master_pdf_bytes"], height=620, key_prefix="master_pdf")
         else:
             st.info("Click 'Test Compile Master Resume' to view your current master PDF.")
