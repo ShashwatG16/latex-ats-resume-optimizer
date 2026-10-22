@@ -209,16 +209,21 @@ Tailor this resume to match the JD's exact keywords and requirements while follo
 
     try:
         if provider == "gemini":
-            chosen_model = model_name or "gemini-3.8-flash"
+            chosen_model = model_name or "gemini-3.6-flash"
             tailored_latex = ""
             from google import genai
             from google.genai import types
             client = genai.Client(api_key=api_key)
-            candidate_models = [chosen_model] + [
-                m for m in ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-4-argon"]
-                if m != chosen_model
+            fallback_order = [
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-3-flash-preview",
+                "gemini-3.5-flash-lite",
+                "gemini-flash-lite-latest",
+                "gemini-3.8-flash",
             ]
-            last_err = None
+            candidate_models = [chosen_model] + [m for m in fallback_order if m != chosen_model]
+            errors_by_model = []
             for m_name in candidate_models:
                 try:
                     response = client.models.generate_content(
@@ -234,10 +239,10 @@ Tailor this resume to match the JD's exact keywords and requirements while follo
                         chosen_model = m_name
                         break
                 except Exception as m_err:
-                    last_err = m_err
+                    errors_by_model.append(f"{m_name}: {str(m_err)[:120]}")
                     continue
-            if not tailored_latex and last_err:
-                raise last_err
+            if not tailored_latex and errors_by_model:
+                raise RuntimeError(" | ".join(errors_by_model[:3]))
         else:
             import openai
             chosen_model = model_name or "gpt-4o"
