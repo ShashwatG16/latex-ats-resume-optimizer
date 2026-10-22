@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- MANDATORY: Declare support for both light and dark themes -->
+  <meta name="color-scheme" content="light dark" />
+  <title>JobTailor-AI Studio | Overleaf-Style ATS Resume Optimizer</title>
+
+  <!-- Google Fonts: Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Vue 3 Global Build -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <style>
+    /* MANDATORY: Apply color-scheme to :root or html for viewport-wide theming */
+    :root {
+      color-scheme: light dark;
+      --color-brand-light: oklch(48% 0.22 265);
+      --color-brand-dark: oklch(72% 0.16 255);
+      --color-surface-light: #f8fafc;
+      --color-surface-dark: #0b0f19;
+      --color-card-light: #ffffff;
+      --color-card-dark: #111827;
+      --color-border-light: #e2e8f0;
+      --color-border-dark: #1f2937;
+      --color-text-light: #0f172a;
+      --color-text-dark: #f1f5f9;
+      --color-muted-light: #64748b;
+      --color-muted-dark: #94a3b8;
+
+      --surface-bg: light-dark(var(--color-surface-light), var(--color-surface-dark));
+      --card-bg: light-dark(var(--color-card-light), var(--color-card-dark));
+      --border-col: light-dark(var(--color-border-light), var(--color-border-dark));
+      --text-primary: light-dark(var(--color-text-light), var(--color-text-dark));
+      --text-muted: light-dark(var(--color-muted-light), var(--color-muted-dark));
+      --brand-primary: light-dark(var(--color-brand-light), var(--color-brand-dark));
+
+      --scrollbar-thumb: light-dark(#cbd5e1, #334155);
+      --scrollbar-track: light-dark(#f1f5f9, #0f172a);
+      accent-color: var(--brand-primary);
+    }
+
+    html[data-theme="dark"] {
+      color-scheme: dark;
+    }
+    html[data-theme="light"] {
+      color-scheme: light;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--surface-bg);
+      color: var(--text-primary);
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    .mono-editor {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      tab-size: 2;
+      color-scheme: dark;
+      accent-color: var(--brand-primary);
+    }
+
+    /* Modern scrollbar styling with progressive fallback */
+    .scroller {
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+      scrollbar-width: thin;
+    }
+    @supports not (scrollbar-color: auto) {
+      .scroller::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      .scroller::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 5px;
+      }
+      .scroller::-webkit-scrollbar-track {
+        background: var(--scrollbar-track);
+      }
+    }
+
+    /* Native Modal Dialog Backdrop */
+    dialog {
+      background: var(--card-bg);
+      color: var(--text-primary);
+      border: 1px solid var(--border-col);
+      border-radius: 14px;
+      padding: 0;
+      max-width: 520px;
+      width: 92vw;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+    }
+    dialog::backdrop {
+      background-color: rgba(2, 6, 23, 0.65);
+      backdrop-filter: blur(4px);
+    }
+
+    /* Responsive Accessible Data Table (modern-web-guidance: responsive-table) */
+    .table-wrapper {
+      overflow: auto;
+      max-inline-size: 100%;
+      max-block-size: min(620px, 78vh);
+      container-type: inline-size;
+      border: 1px solid var(--border-col);
+      border-radius: 12px;
+      background: var(--card-bg);
+    }
+    .crm-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.875rem;
+    }
+    .crm-table thead {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background: light-dark(#f1f5f9, #1e293b);
+    }
+    .crm-table th,
+    .crm-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-col);
+    }
+    .crm-table tbody th {
+      position: sticky;
+      inset-inline-start: 0;
+      z-index: 1;
+      background: var(--card-bg);
+      font-weight: 600;
+    }
+
+    @container (width < 640px) {
+      .crm-table, .crm-table thead, .crm-table tbody, .crm-table tr, .crm-table th, .crm-table td {
+        display: block;
+      }
+      .crm-table thead {
+        display: none;
+      }
+      .crm-table tr {
+        margin-block-end: 1rem;
+        border: 1px solid var(--border-col);
+        border-radius: 8px;
+      }
+      .crm-table tbody th {
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 2;
+        background: light-dark(#f1f5f9, #1e293b);
+      }
+      .crm-table {
+        --label-2: "Role";
+        --label-3: "Req ID";
+        --label-4: "ATS Match";
+        --label-5: "Status";
+        --label-6: "Date";
+        --label-7: "Actions";
+      }
+      .crm-table td:nth-child(2)::before { content: var(--label-2) ": "; font-weight: 600; }
+      .crm-table td:nth-child(3)::before { content: var(--label-3) ": "; font-weight: 600; }
+      .crm-table td:nth-child(4)::before { content: var(--label-4) ": "; font-weight: 600; }
+      .crm-table td:nth-child(5)::before { content: var(--label-5) ": "; font-weight: 600; }
+      .crm-table td:nth-child(6)::before { content: var(--label-6) ": "; font-weight: 600; }
+      .crm-table td:nth-child(7)::before { content: var(--label-7) ": "; font-weight: 600; }
+    }
+
+    [v-cloak] { display: none; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <div id="app" v-cloak class="min-h-screen flex flex-col">
+
+    <!-- TOP NAVIGATION BAR -->
+    <header class="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-5 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-bold shadow-md shadow-indigo-500/20">
+          JT
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base font-bold tracking-tight">JobTailor-AI Studio</h1>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+              Vue 3 + FastAPI
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Zero-Fabrication LaTeX ATS Optimizer &amp; Live Overleaf IDE</p>
+        </div>
+      </div>
+
+      <!-- NAVIGATION TABS -->
+      <nav class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+        <button
+          @click="activeTab = 'studio'"
+          :class="activeTab === 'studio' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm font-semibold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'"
+          class="px-3.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5"
+        >
+          <span>🎯</span> Tailor &amp; Overleaf Studio
+        </button>
+        <button
+          @click="activeTab = 'tracker'; loadApplications()"
+          :class="activeTab === 'tracker' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm font-semibold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'"
+          class="px-3.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5"
+        >
+          <span>📊</span> Application CRM
+          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">{{ applications.length }}</span>
+        </button>
+        <button
+          @click="activeTab = 'master'"
+          :class="activeTab === 'master' ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm font-semibold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'"
+          class="px-3.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5"
+        >
+          <span>👤</span> Master LaTeX Manager
+        </button>
+      </nav>
+
+      <!-- PROFILE & AI SETTINGS BAR -->
+      <div class="flex items-center gap-2.5">
+        <!-- Candidate Selector -->
+        <div class="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+          <span class="text-xs text-slate-400">👤</span>
+          <select
+            v-model="selectedUserId"
+            @change="onUserSwitch"
+            aria-label="Select Candidate Profile"
+            class="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer"
+          >
+            <option v-for="u in users" :key="u.id" :value="u.id" class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+              {{ u.name }}
+            </option>
+          </select>
+          <button
+            @click="openDialog('newProfileDialog')"
+            title="Create New Candidate Profile"
+            class="text-xs px-1.5 py-0.5 rounded bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white transition"
+          >
+            + New
+          </button>
+        </div>
+
+        <!-- AI Engine Badge / Modal Trigger -->
+        <button
+          @click="openDialog('aiSettingsDialog')"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-indigo-500 transition"
+        >
+          <span class="w-2 h-2 rounded-full" :class="aiStatusDotClass"></span>
+          <span>{{ providerLabel }}</span>
+          <span class="text-[10px] text-slate-400">⚙️</span>
+        </button>
+
+        <!-- Theme Toggle -->
+        <button
+          @click="toggleTheme"
+          class="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs transition"
+          :title="'Switch theme (Current: ' + themeMode + ')'"
+        >
+          <span v-if="themeMode === 'dark'">🌙</span>
+          <span v-else>☀️</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- TOAST BANNER -->
+    <div v-if="toast.message" class="fixed bottom-5 right-5 z-50 max-w-md px-4 py-3 rounded-xl shadow-xl border flex items-center gap-3 transition-all"
+         :class="toast.type === 'error' ? 'bg-red-950/95 border-red-700 text-red-100' : 'bg-slate-900/95 border-emerald-600 text-emerald-100'">
+      <span>{{ toast.type === 'error' ? '⚠️' : '✅' }}</span>
+      <div class="text-xs font-medium flex-1">{{ toast.message }}</div>
+      <button @click="toast.message = ''" class="text-xs opacity-70 hover:opacity-100">✕</button>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- TAB 1: TAILOR & OVERLEAF STUDIO -->
+    <!-- =================================================================== -->
+    <main v-show="activeTab === 'studio'" class="flex-1 flex flex-col gap-4 p-4 lg:p-5 max-w-[1800px] w-full mx-auto">
+
+      <!-- TOP COLLAPSIBLE JD & ATS SCORE DRAWER -->
+      <section class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <button
+              @click="jdPanelOpen = !jdPanelOpen"
+              class="text-xs font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100"
+            >
+              <span class="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">Step 1</span>
+              <span>Target Job Opportunity &amp; ATS Keyword Match</span>
+              <span class="text-slate-400 text-[10px]">{{ jdPanelOpen ? '▼ Hide' : '▶ Expand' }}</span>
+            </button>
+            <span v-if="form.company || form.jobTitle" class="text-xs text-slate-500">
+              — <strong>{{ form.company || 'Company' }}</strong> · {{ form.jobTitle || 'Role' }}
+            </span>
+          </div>
+
+          <!-- Quick ATS Score Pills -->
+          <div v-if="atsStats" class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5 text-xs">
+              <span class="text-slate-400">Base:</span>
+              <span class="font-semibold">{{ atsStats.score_before }}%</span>
+              <span class="text-slate-400">→</span>
+              <span class="text-emerald-600 dark:text-emerald-400 font-bold text-sm">{{ atsStats.score_after }}%</span>
+              <span class="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
+                +{{ (atsStats.score_after - atsStats.score_before).toFixed(1) }}%
+              </span>
+            </div>
+            <span v-if="atsStats.engine_used" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
+              {{ atsStats.engine_used }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Expandable Form Body -->
+        <div v-show="jdPanelOpen" class="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <!-- Left 5 Cols: Role Metadata -->
+          <div class="lg:col-span-5 flex flex-col gap-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Company Name *</label>
+                <input v-model="form.company" type="text" placeholder="e.g. Deloitte, Google, Wells Fargo"
+                  class="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-indigo-500" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Target Role Title *</label>
+                <input v-model="form.jobTitle" type="text" placeholder="e.g. Analyst - D365 F&O SCM"
+                  class="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-indigo-500" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Req ID</label>
+                <input v-model="form.reqId" type="text" placeholder="e.g. 108410"
+                  class="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-indigo-500" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Location</label>
+                <input v-model="form.location" type="text" placeholder="Bengaluru / Remote"
+                  class="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-indigo-500" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Posting URL</label>
+                <input v-model="form.jobUrl" type="url" placeholder="https://..."
+                  class="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-indigo-500" />
+              </div>
+            </div>
+
+            <!-- Upload PDF/TXT JD -->
+            <div class="flex items-center justify-between pt-1">
+              <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition border border-slate-200 dark:border-slate-700">
+                <span>📎 Upload JD File (.pdf / .txt)</span>
+                <input type="file" accept=".pdf,.txt" class="hidden" @change="onUploadJdFile" />
+              </label>
+
+              <button
+                @click="runTailorResume"
+                :disabled="isTailoring"
+                class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 shadow-md shadow-indigo-600/20 transition flex items-center gap-2"
+              >
+                <span v-if="isTailoring" class="animate-spin">⏳</span>
+                <span v-else>🚀</span>
+                <span>{{ isTailoring ? 'Tailoring & Compiling...' : 'Analyze JD & Tailor Resume' }}</span>
+              </button>
+            </div>
+
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              🛡️ <strong>Zero-Fabrication Guardrail:</strong> Degrees, employers, job titles, dates, and GPA are strictly locked. Only summary, skills priority, and truthful STAR bullet framing are optimized.
+            </p>
+          </div>
+
+          <!-- Right 7 Cols: JD Textarea + Keyword Pills -->
+          <div class="lg:col-span-7 flex flex-col gap-3">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Full Job Description (Paste or Upload)</label>
+                <span class="text-[11px] text-slate-400">{{ form.jdText.length }} chars</span>
+              </div>
+              <textarea
+                v-model="form.jdText"
+                rows="5"
+                placeholder="Paste job responsibilities, required technical qualifications, ERP/SCM/Cloud skills, etc..."
+                class="w-full p-3 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-indigo-500 scroller"
+              ></textarea>
+            </div>
+
+            <!-- Keyword Match Breakdown -->
+            <div v-if="atsStats" class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              <div class="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                <div class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mb-1.5">
+                  ✅ Matched JD Keywords ({{ atsStats.matched_keywords.length }})
+                </div>
+                <div class="flex flex-wrap gap-1 max-h-20 overflow-y-auto scroller">
+                  <span v-for="kw in atsStats.matched_keywords" :key="kw"
+                    class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                    {{ kw }}
+                  </span>
+                </div>
+              </div>
+              <div class="p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
+                <div class="text-[11px] font-bold text-rose-600 dark:text-rose-400 mb-1.5">
+                  ⚠️ Missing Keywords ({{ atsStats.missing_keywords.length }}) — Click to copy
+                </div>
+                <div class="flex flex-wrap gap-1 max-h-20 overflow-y-auto scroller">
+                  <button v-for="kw in atsStats.missing_keywords" :key="kw"
+                    @click="copyKeyword(kw)"
+                    class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25 transition">
+                    + {{ kw }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- OVERLEAF-STYLE SPLIT WORKSPACE -->
+      <section class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[720px]">
+
+        <!-- LEFT PANE: LATEX SOURCE CODE IDE -->
+        <div class="flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-950 text-slate-100 shadow-sm overflow-hidden">
+          <!-- Editor Toolbar -->
+          <div class="px-4 py-2.5 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <span class="text-xs font-semibold tracking-tight text-slate-200">resume_tailored.tex</span>
+              <span class="text-[11px] text-slate-400 font-mono">({{ editorLineCount }} lines)</span>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button
+                @click="compileCurrentLatex"
+                :disabled="isCompiling"
+                class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 transition flex items-center gap-1.5 shadow-sm"
+              >
+                <span v-if="isCompiling" class="animate-spin">🔄</span>
+                <span v-else>▶</span>
+                <span>{{ isCompiling ? 'Compiling...' : 'Re-Compile PDF' }}</span>
+              </button>
+
+              <button
+                @click="downloadTex(tailoredLatex, (form.company || activeUserName) + '_Resume.tex')"
+                class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              >
+                📥 .tex
+              </button>
+
+              <button
+                @click="saveApplicationToTracker"
+                :disabled="isSavingApp"
+                class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition"
+              >
+                💾 Save to CRM
+              </button>
+            </div>
+          </div>
+
+          <!-- Code Editor Textarea -->
+          <div class="relative flex-1 flex">
+            <textarea
+              v-model="tailoredLatex"
+              @keydown.ctrl.enter.prevent="compileCurrentLatex"
+              @keydown.meta.enter.prevent="compileCurrentLatex"
+              spellcheck="false"
+              class="mono-editor scroller flex-1 w-full h-full min-h-[640px] p-4 bg-slate-950 text-slate-100 focus:outline-none resize-none"
+              placeholder="\documentclass[letterpaper,10pt]{article}..."
+            ></textarea>
+          </div>
+
+          <div class="px-4 py-1.5 bg-slate-900/90 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Tip: Press <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">Ctrl + Enter</kbd> to re-compile live PDF</span>
+            <span>TeXLive Cloud pdflatex Engine</span>
+          </div>
+        </div>
+
+        <!-- RIGHT PANE: LIVE RENDERED PDF VIEWER -->
+        <div class="flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+          <!-- PDF Preview Toolbar -->
+          <div class="px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+              <span class="text-xs font-semibold">📑 Live Compiled PDF</span>
+              <span v-if="pdfPageCount > 0"
+                :class="pdfPageCount === 1 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'"
+                class="text-[11px] font-semibold px-2 py-0.5 rounded-full border">
+                {{ pdfPageCount === 1 ? '✓ Strict 1-Page Verified' : '⚠️ ' + pdfPageCount + ' Pages' }}
+              </span>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <!-- Mode switcher: High-DPI Canvas vs Native PDF Blob -->
+              <div class="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px]">
+                <button
+                  @click="pdfRenderMode = 'image'"
+                  :class="pdfRenderMode === 'image' ? 'bg-white dark:bg-slate-900 font-semibold shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500'"
+                  class="px-2.5 py-1 rounded-md transition"
+                >
+                  High-DPI Page
+                </button>
+                <button
+                  @click="pdfRenderMode = 'blob'"
+                  :class="pdfRenderMode === 'blob' ? 'bg-white dark:bg-slate-900 font-semibold shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500'"
+                  class="px-2.5 py-1 rounded-md transition"
+                >
+                  Native PDF Viewer
+                </button>
+              </div>
+
+              <button
+                v-if="pdfBase64"
+                @click="downloadPdf"
+                class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-sm"
+              >
+                📥 Download PDF
+              </button>
+            </div>
+          </div>
+
+          <!-- PDF Canvas Body -->
+          <div class="flex-1 bg-slate-100 dark:bg-slate-950/80 p-4 overflow-y-auto scroller flex flex-col items-center justify-start min-h-[640px]">
+            <div v-if="isCompiling || isTailoring" class="my-auto flex flex-col items-center gap-3 text-center py-16">
+              <div class="w-10 h-10 rounded-full border-3 border-indigo-600 border-t-transparent animate-spin"></div>
+              <p class="text-xs font-medium text-slate-500">Compiling LaTeX with TeXLive pdflatex...</p>
+            </div>
+
+            <div v-else-if="compileError" class="my-auto max-w-lg p-5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-mono whitespace-pre-wrap">
+              <strong>LaTeX Compilation Error:</strong>
+              {{ compileError }}
+            </div>
+
+            <!-- High-DPI PNG Rendering (100% immune to browser iframe blocking) -->
+            <template v-else-if="pdfRenderMode === 'image' && pdfPagesPng.length > 0">
+              <div v-for="(pagePng, idx) in pdfPagesPng" :key="idx"
+                class="w-full max-w-[780px] bg-white shadow-xl rounded-lg overflow-hidden mb-4 border border-slate-300 dark:border-slate-700">
+                <img :src="'data:image/png;base64,' + pagePng" :alt="'Compiled Resume Page ' + (idx + 1)" class="w-full h-auto block" />
+              </div>
+            </template>
+
+            <!-- Native Browser Blob Object URL PDF Viewer -->
+            <template v-else-if="pdfRenderMode === 'blob' && pdfBlobUrl">
+              <iframe :src="pdfBlobUrl" class="w-full h-full min-h-[640px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white"></iframe>
+            </template>
+
+            <div v-else class="my-auto text-center max-w-sm py-16">
+              <div class="text-4xl mb-3">📄</div>
+              <h3 class="text-sm font-semibold mb-1">Ready to Compile Live PDF</h3>
+              <p class="text-xs text-slate-500 mb-4">
+                Click below to compile the current LaTeX resume into a live, single-page PDF preview.
+              </p>
+              <button
+                @click="compileCurrentLatex"
+                class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition"
+              >
+                ⚡ Compile Current LaTeX Now
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+    <!-- =================================================================== -->
+    <!-- TAB 2: APPLICATION TRACKER & CRM -->
+    <!-- =================================================================== -->
+    <main v-show="activeTab === 'tracker'" class="flex-1 p-5 max-w-[1600px] w-full mx-auto flex flex-col gap-5">
+      <!-- KPI Row -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="text-xs text-slate-400 font-medium">Total Applications</div>
+          <div class="text-2xl font-bold mt-1">{{ applications.length }}</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="text-xs text-slate-400 font-medium">Active Submissions</div>
+          <div class="text-2xl font-bold mt-1 text-indigo-600 dark:text-indigo-400">
+            {{ applications.filter(a => a.status === 'Applied' || a.status === 'Screening').length }}
+          </div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="text-xs text-slate-400 font-medium">Interviews &amp; Offers</div>
+          <div class="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">
+            {{ applications.filter(a => a.status.includes('Interview') || a.status === 'Offer').length }}
+          </div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="text-xs text-slate-400 font-medium">Average ATS Score</div>
+          <div class="text-2xl font-bold mt-1">{{ avgAtsScore }}%</div>
+        </div>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <input
+            v-model="crmSearch"
+            type="search"
+            placeholder="Search company, role, location..."
+            class="px-3.5 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 w-64 focus:outline-none focus:border-indigo-500"
+          />
+          <select
+            v-model="crmStatusFilter"
+            aria-label="Filter applications by status"
+            class="px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none"
+          >
+            <option value="All">All Statuses</option>
+            <option v-for="st in statusOptions" :key="st" :value="st">{{ st }}</option>
+          </select>
+        </div>
+        <div class="text-xs text-slate-400">
+          Showing <strong>{{ filteredApplications.length }}</strong> applications for <strong>{{ activeUserName }}</strong>
+        </div>
+      </div>
+
+      <!-- Accessible Responsive Data Table (follows modern-web-guidance `responsive-table`) -->
+      <div tabindex="0" role="region" aria-labelledby="crm-table-caption" class="table-wrapper scroller">
+        <table class="crm-table">
+          <caption id="crm-table-caption" class="sr-only">Job Applications Tracker for {{ activeUserName }}</caption>
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>Target Role</th>
+              <th>Req ID / Location</th>
+              <th>ATS Match</th>
+              <th>Stage</th>
+              <th>Applied Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="filteredApplications.length === 0">
+              <td colspan="7" class="text-center py-10 text-slate-400 text-xs">
+                No applications logged yet. Tailor a resume in Studio and click "Save to CRM".
+              </td>
+            </tr>
+            <tr v-for="app in filteredApplications" :key="app.id" class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
+              <th>
+                <div class="font-bold text-slate-900 dark:text-white">{{ app.company }}</div>
+                <a v-if="app.job_url" :href="app.job_url" target="_blank" class="text-[11px] text-indigo-500 hover:underline">Posting Link ↗</a>
+              </th>
+              <td>
+                <div class="font-medium">{{ app.job_title }}</div>
+              </td>
+              <td class="text-xs text-slate-500">
+                <div>Req: {{ app.requisition_id || 'N/A' }}</div>
+                <div>{{ app.location || 'N/A' }}</div>
+              </td>
+              <td>
+                <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  {{ app.ats_score }}%
+                </span>
+              </td>
+              <td>
+                <select
+                  :value="app.status"
+                  @change="updateAppStatus(app.id, $event.target.value)"
+                  :aria-label="'Application status for ' + app.company"
+                  class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                >
+                  <option v-for="st in statusOptions" :key="st" :value="st">{{ st }}</option>
+                </select>
+              </td>
+              <td class="text-xs text-slate-500">{{ app.applied_date || 'N/A' }}</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <button
+                    @click="loadAppIntoStudio(app)"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white transition"
+                  >
+                    Open in Studio
+                  </button>
+                  <a
+                    v-if="app.pdf_filename"
+                    :href="'/api/applications/' + app.id + '/pdf'"
+                    target="_blank"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                  >
+                    📥 PDF
+                  </a>
+                  <button
+                    @click="downloadTex(app.tailored_latex, app.company + '_' + app.job_title + '.tex')"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                  >
+                    .tex
+                  </button>
+                  <button
+                    @click="deleteApp(app.id)"
+                    class="px-2 py-1 rounded-lg text-xs text-rose-500 hover:bg-rose-500/10 transition"
+                    title="Delete Application"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- =================================================================== -->
+    <!-- TAB 3: MASTER RESUME MANAGER -->
+    <!-- =================================================================== -->
+    <main v-show="activeTab === 'master'" class="flex-1 p-5 max-w-[1600px] w-full mx-auto flex flex-col gap-4">
+      <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 class="text-sm font-bold">👤 Master Base LaTeX Resume — {{ activeUserName }}</h2>
+          <p class="text-xs text-slate-500">This foundational template is used as the single source of truth whenever you tailor for a new JD.</p>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <button
+            @click="saveMasterResume"
+            class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition"
+          >
+            💾 Save Master LaTeX to Database
+          </button>
+          <button
+            @click="compileMasterPreview"
+            :disabled="isCompiling"
+            class="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition"
+          >
+            🔄 Compile &amp; Preview Master PDF
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-[640px]">
+        <div class="rounded-2xl border border-slate-800 bg-slate-950 overflow-hidden flex flex-col">
+          <div class="px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs font-semibold text-slate-300">
+            master_resume.tex
+          </div>
+          <textarea
+            v-model="masterLatexEdit"
+            spellcheck="false"
+            class="mono-editor scroller flex-1 w-full p-4 bg-slate-950 text-slate-100 focus:outline-none resize-none min-h-[600px]"
+          ></textarea>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 p-4 flex flex-col items-center justify-start overflow-y-auto scroller min-h-[600px]">
+          <template v-if="masterPagesPng.length > 0">
+            <div v-for="(png, i) in masterPagesPng" :key="i" class="w-full max-w-[760px] bg-white shadow-xl rounded-lg overflow-hidden mb-4">
+              <img :src="'data:image/png;base64,' + png" alt="Master Resume Page" class="w-full h-auto block" />
+            </div>
+          </template>
+          <div v-else class="my-auto text-center py-16 text-xs text-slate-400">
+            Click <strong>"Compile &amp; Preview Master PDF"</strong> to render your master resume.
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- =================================================================== -->
+    <!-- DIALOG 1: AI ENGINE & GEMINI API KEY SETTINGS (light-dismiss-a-dialog) -->
+    <!-- =================================================================== -->
+    <dialog id="aiSettingsDialog" ref="aiSettingsDialog" closedby="any" aria-labelledby="aiDialogTitle">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="aiDialogTitle" class="text-base font-bold">🤖 AI Optimizer &amp; API Key Settings</h2>
+          <button @click="closeDialog('aiSettingsDialog')" class="text-slate-400 hover:text-slate-200 text-sm">✕</button>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-400 mb-1">Optimization Engine</label>
+            <select v-model="aiConfig.provider" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <option value="gemini">Google Gemini AI (Recommended)</option>
+              <option value="openai">OpenAI GPT-4o</option>
+              <option value="heuristic">Heuristic Engine (Offline / No API Key)</option>
+            </select>
+          </div>
+
+          <div v-if="aiConfig.provider === 'gemini'" class="space-y-3">
+            <div>
+              <label class="block font-semibold text-slate-400 mb-1">Gemini Model</label>
+              <select v-model="aiConfig.modelName" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <option value="gemini-2.5-flash">gemini-2.5-flash (Fast &amp; High ATS Accuracy)</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro (Deep Reasoning)</option>
+                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+              </select>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="font-semibold text-slate-400">Gemini API Key</label>
+                <span v-if="aiConfig.hasGeminiKey" class="text-emerald-500 font-semibold">✓ Saved in .env</span>
+              </div>
+              <input
+                v-model="aiConfig.apiKeyInput"
+                type="password"
+                placeholder="Paste new Gemini API key (or leave blank to use saved .env key)"
+                class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              />
+              <p class="mt-1.5 text-[11px] text-slate-400">
+                Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-500 underline">Google AI Studio</a>.
+              </p>
+            </div>
+          </div>
+
+          <div v-if="aiConfig.provider === 'openai'" class="space-y-3">
+            <div>
+              <label class="block font-semibold text-slate-400 mb-1">OpenAI Model</label>
+              <select v-model="aiConfig.modelName" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <option value="gpt-4o">gpt-4o</option>
+                <option value="gpt-4o-mini">gpt-4o-mini</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-400 mb-1">OpenAI API Key</label>
+              <input
+                v-model="aiConfig.apiKeyInput"
+                type="password"
+                placeholder="sk-..."
+                class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              />
+            </div>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <button @click="closeDialog('aiSettingsDialog')" class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-medium">
+              Close
+            </button>
+            <button
+              v-if="aiConfig.apiKeyInput.trim()"
+              @click="saveApiKeyToServer"
+              class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+            >
+              💾 Save Key to .env
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- =================================================================== -->
+    <!-- DIALOG 2: CREATE NEW CANDIDATE PROFILE (light-dismiss-a-dialog) -->
+    <!-- =================================================================== -->
+    <dialog id="newProfileDialog" ref="newProfileDialog" closedby="any" aria-labelledby="newProfileTitle">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="newProfileTitle" class="text-base font-bold">👤 Create Candidate Profile</h2>
+          <button @click="closeDialog('newProfileDialog')" class="text-slate-400 hover:text-slate-200 text-sm">✕</button>
+        </div>
+        <div class="space-y-3 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-400 mb-1">Full Name *</label>
+            <input v-model="newUser.name" type="text" placeholder="e.g. Alex Rivera"
+              class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700" />
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-400 mb-1">Email</label>
+            <input v-model="newUser.email" type="email" placeholder="alex@example.com"
+              class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700" />
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-400 mb-1">Phone</label>
+            <input v-model="newUser.phone" type="text" placeholder="+91 ..."
+              class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700" />
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-400 mb-1">Headline</label>
+            <input v-model="newUser.headline" type="text" placeholder="Software Engineer | Full Stack"
+              class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700" />
+          </div>
+          <div class="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <button @click="closeDialog('newProfileDialog')" class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-medium">Cancel</button>
+            <button @click="createNewProfile" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold">Create Profile</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+
+    createApp({
+      data() {
+        return {
+          activeTab: 'studio',
+          themeMode: 'dark',
+          jdPanelOpen: true,
+          users: [],
+          selectedUserId: null,
+          applications: [],
+          crmSearch: '',
+          crmStatusFilter: 'All',
+          statusOptions: ['Draft', 'Applied', 'Screening', 'Interview Scheduled', 'Offer', 'Rejected'],
+
+          form: {
+            company: '',
+            jobTitle: '',
+            reqId: '',
+            location: '',
+            jobUrl: '',
+            jdText: '',
+          },
+
+          aiConfig: {
+            provider: 'gemini',
+            modelName: 'gemini-2.5-flash',
+            apiKeyInput: '',
+            hasGeminiKey: false,
+            hasOpenaiKey: false,
+          },
+
+          tailoredLatex: '',
+          masterLatexEdit: '',
+          atsStats: null,
+
+          isTailoring: false,
+          isCompiling: false,
+          isSavingApp: false,
+          compileError: null,
+
+          pdfRenderMode: 'image',
+          pdfBase64: null,
+          pdfBlobUrl: null,
+          pdfPagesPng: [],
+          pdfPageCount: 0,
+          masterPagesPng: [],
+
+          newUser: { name: '', email: '', phone: '', headline: '' },
+          toast: { message: '', type: 'success' },
+        };
+      },
+      computed: {
+        activeUser() {
+          return this.users.find(u => u.id === this.selectedUserId) || null;
+        },
+        activeUserName() {
+          return this.activeUser ? this.activeUser.name : 'Candidate';
+        },
+        editorLineCount() {
+          return (this.tailoredLatex || '').split('\n').length;
+        },
+        providerLabel() {
+          if (this.aiConfig.provider === 'gemini') return `Gemini (${this.aiConfig.modelName})`;
+          if (this.aiConfig.provider === 'openai') return `OpenAI (${this.aiConfig.modelName})`;
+          return 'Heuristic Engine';
+        },
+        aiStatusDotClass() {
+          if (this.aiConfig.provider === 'gemini' && (this.aiConfig.hasGeminiKey || this.aiConfig.apiKeyInput)) return 'bg-emerald-400';
+          if (this.aiConfig.provider === 'openai' && (this.aiConfig.hasOpenaiKey || this.aiConfig.apiKeyInput)) return 'bg-emerald-400';
+          if (this.aiConfig.provider === 'heuristic') return 'bg-sky-400';
+          return 'bg-amber-400';
+        },
+        filteredApplications() {
+          return this.applications.filter(a => {
+            if (this.crmStatusFilter !== 'All' && a.status !== this.crmStatusFilter) return false;
+            if (this.crmSearch.trim()) {
+              const q = this.crmSearch.toLowerCase();
+              return (
+                (a.company || '').toLowerCase().includes(q) ||
+                (a.job_title || '').toLowerCase().includes(q) ||
+                (a.location || '').toLowerCase().includes(q)
+              );
+            }
+            return true;
+          });
+        },
+        avgAtsScore() {
+          if (!this.applications.length) return '0.0';
+          const sum = this.applications.reduce((acc, a) => acc + (Number(a.ats_score) || 0), 0);
+          return (sum / this.applications.length).toFixed(1);
+        }
+      },
+      async mounted() {
+        document.documentElement.setAttribute('data-theme', this.themeMode);
+        this.setupDialogLightDismissFallbacks();
+        await this.loadServerConfig();
+        await this.loadUsers();
+      },
+      methods: {
+        showToast(message, type = 'success') {
+          this.toast = { message, type };
+          setTimeout(() => {
+            if (this.toast.message === message) this.toast.message = '';
+          }, 5000);
+        },
+        toggleTheme() {
+          this.themeMode = this.themeMode === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', this.themeMode);
+        },
+        openDialog(refName) {
+          const dlg = this.$refs[refName];
+          if (dlg && typeof dlg.showModal === 'function') dlg.showModal();
+        },
+        closeDialog(refName) {
+          const dlg = this.$refs[refName];
+          if (dlg && typeof dlg.close === 'function') dlg.close();
+        },
+        setupDialogLightDismissFallbacks() {
+          // MANDATORY fallback from modern-web-guidance `light-dismiss-a-dialog` for browsers without `closedBy`
+          if (!('closedBy' in HTMLDialogElement.prototype)) {
+            document.querySelectorAll('dialog').forEach((dialog) => {
+              dialog.addEventListener('click', (event) => {
+                if (event.target !== dialog) return;
+                const rect = dialog.getBoundingClientRect();
+                const isDialogContent = (
+                  rect.top <= event.clientY &&
+                  event.clientY <= rect.top + rect.height &&
+                  rect.left <= event.clientX &&
+                  event.clientX <= rect.left + rect.width
+                );
+                if (isDialogContent) return;
+                dialog.close();
+              });
+            });
+          }
+        },
+        async loadServerConfig() {
+          try {
+            const res = await fetch('/api/config');
+            const cfg = await res.json();
+            this.aiConfig.hasGeminiKey = cfg.has_gemini_key;
+            this.aiConfig.hasOpenaiKey = cfg.has_openai_key;
+            this.aiConfig.provider = cfg.default_provider || 'gemini';
+          } catch (e) {
+            console.error(e);
+          }
+        },
+        async loadUsers() {
+          const res = await fetch('/api/users');
+          this.users = await res.json();
+          if (this.users.length && !this.selectedUserId) {
+            this.selectedUserId = this.users[0].id;
+            await this.onUserSwitch();
+          }
+        },
+        async onUserSwitch() {
+          if (!this.activeUser) return;
+          this.tailoredLatex = this.activeUser.master_latex;
+          this.masterLatexEdit = this.activeUser.master_latex;
+          this.atsStats = null;
+          this.pdfBase64 = null;
+          this.pdfPagesPng = [];
+          await this.loadApplications();
+          await this.compileCurrentLatex();
+        },
+        async loadApplications() {
+          if (!this.selectedUserId) return;
+          const res = await fetch(`/api/users/${this.selectedUserId}/applications`);
+          this.applications = await res.json();
+        },
+        async onUploadJdFile(ev) {
+          const file = ev.target.files[0];
+          if (!file) return;
+          const fd = new FormData();
+          fd.append('file', file);
+          try {
+            const res = await fetch('/api/extract-jd', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.text) {
+              this.form.jdText = data.text;
+              this.showToast(`Extracted JD from ${file.name}`);
+            }
+          } catch (err) {
+            this.showToast('Failed to extract text from file', 'error');
+          }
+        },
+        updatePdfFromResponse(pdfBase64, pagesPng, pageCount) {
+          this.pdfBase64 = pdfBase64;
+          this.pdfPagesPng = pagesPng || [];
+          this.pdfPageCount = pageCount || 1;
+          if (this.pdfBlobUrl) URL.revokeObjectURL(this.pdfBlobUrl);
+          if (pdfBase64) {
+            const byteCharacters = atob(pdfBase64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+            this.pdfBlobUrl = URL.createObjectURL(blob);
+          }
+        },
+        async runTailorResume() {
+          if (!this.form.jdText.trim()) {
+            this.showToast('Please paste or upload a Job Description first.', 'error');
+            return;
+          }
+          this.isTailoring = true;
+          this.compileError = null;
+          try {
+            const res = await fetch('/api/tailor', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: this.selectedUserId,
+                jd_text: this.form.jdText,
+                company: this.form.company,
+                job_title: this.form.jobTitle,
+                provider: this.aiConfig.provider,
+                model_name: this.aiConfig.modelName,
+                api_key: this.aiConfig.apiKeyInput,
+                compile_pdf: true,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Tailoring failed');
+
+            this.tailoredLatex = data.tailored_latex;
+            this.atsStats = data.stats;
+            if (data.stats && data.stats.ai_error) {
+              this.showToast(`AI Notice: ${data.stats.ai_error}`, 'error');
+            } else {
+              this.showToast(`Tailored (${data.stats.engine_used || 'ATS Engine'}) & Compiled!`);
+            }
+
+            if (data.pdf_base64) {
+              this.updatePdfFromResponse(data.pdf_base64, data.pages_png, data.page_count);
+            } else if (data.compile_error) {
+              this.compileError = data.compile_error;
+            }
+          } catch (e) {
+            this.showToast(e.message || 'Error tailoring resume', 'error');
+          } finally {
+            this.isTailoring = false;
+          }
+        },
+        async compileCurrentLatex() {
+          if (!this.tailoredLatex.trim()) return;
+          this.isCompiling = true;
+          this.compileError = null;
+          try {
+            const res = await fetch('/api/compile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tex_code: this.tailoredLatex }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.updatePdfFromResponse(data.pdf_base64, data.pages_png, data.page_count);
+            } else {
+              this.compileError = data.error || 'Compilation failed';
+              this.showToast('LaTeX compilation error — see preview pane', 'error');
+            }
+          } catch (e) {
+            this.showToast('Network error during compilation', 'error');
+          } finally {
+            this.isCompiling = false;
+          }
+        },
+        async compileMasterPreview() {
+          this.isCompiling = true;
+          try {
+            const res = await fetch('/api/compile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tex_code: this.masterLatexEdit }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.masterPagesPng = data.pages_png || [];
+              this.showToast('Master resume compiled!');
+            } else {
+              this.showToast(data.error || 'Failed to compile master resume', 'error');
+            }
+          } finally {
+            this.isCompiling = false;
+          }
+        },
+        async saveMasterResume() {
+          const res = await fetch(`/api/users/${this.selectedUserId}/master`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ master_latex: this.masterLatexEdit }),
+          });
+          if (res.ok) {
+            await this.loadUsers();
+            this.showToast('Master resume updated in database!');
+          }
+        },
+        async saveApplicationToTracker() {
+          if (!this.form.company.trim() || !this.form.jobTitle.trim()) {
+            this.showToast('Please enter Company Name and Target Role Title first.', 'error');
+            this.jdPanelOpen = true;
+            return;
+          }
+          this.isSavingApp = true;
+          try {
+            const res = await fetch('/api/applications', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: this.selectedUserId,
+                company: this.form.company,
+                job_title: this.form.jobTitle,
+                requisition_id: this.form.reqId,
+                location: this.form.location,
+                job_url: this.form.jobUrl,
+                job_description: this.form.jdText || 'Manual Tailor',
+                ats_score: this.atsStats ? this.atsStats.score_after : 0,
+                matched_keywords: this.atsStats ? this.atsStats.matched_keywords : [],
+                missing_keywords: this.atsStats ? this.atsStats.missing_keywords : [],
+                tailored_latex: this.tailoredLatex,
+                pdf_base64: this.pdfBase64,
+                status: 'Applied',
+              }),
+            });
+            if (res.ok) {
+              await this.loadApplications();
+              this.showToast(`Saved ${this.form.company} application to CRM!`);
+            }
+          } finally {
+            this.isSavingApp = false;
+          }
+        },
+        async updateAppStatus(appId, newStatus) {
+          await fetch(`/api/applications/${appId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus }),
+          });
+          await this.loadApplications();
+          this.showToast(`Updated status to ${newStatus}`);
+        },
+        async deleteApp(appId) {
+          await fetch(`/api/applications/${appId}`, { method: 'DELETE' });
+          await this.loadApplications();
+          this.showToast('Application deleted');
+        },
+        async loadAppIntoStudio(app) {
+          this.form.company = app.company;
+          this.form.jobTitle = app.job_title;
+          this.form.reqId = app.requisition_id || '';
+          this.form.location = app.location || '';
+          this.form.jobUrl = app.job_url || '';
+          this.form.jdText = app.job_description || '';
+          this.tailoredLatex = app.tailored_latex;
+          this.activeTab = 'studio';
+          await this.compileCurrentLatex();
+        },
+        async saveApiKeyToServer() {
+          const res = await fetch('/api/config/key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              provider: this.aiConfig.provider === 'openai' ? 'openai' : 'gemini',
+              api_key: this.aiConfig.apiKeyInput,
+            }),
+          });
+          if (res.ok) {
+            this.aiConfig.apiKeyInput = '';
+            await this.loadServerConfig();
+            this.closeDialog('aiSettingsDialog');
+            this.showToast('API Key saved to local .env!');
+          }
+        },
+        async createNewProfile() {
+          if (!this.newUser.name.trim()) return;
+          const res = await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.newUser),
+          });
+          if (res.ok) {
+            const created = await res.json();
+            await this.loadUsers();
+            this.selectedUserId = created.id;
+            await this.onUserSwitch();
+            this.newUser = { name: '', email: '', phone: '', headline: '' };
+            this.closeDialog('newProfileDialog');
+            this.showToast(`Created profile for ${created.name}`);
+          }
+        },
+        downloadPdf() {
+          if (!this.pdfBlobUrl) return;
+          const a = document.createElement('a');
+          a.href = this.pdfBlobUrl;
+          a.download = `${(this.form.company || this.activeUserName).replace(/\s+/g, '_')}_${(this.form.jobTitle || 'Resume').replace(/\s+/g, '_')}.pdf`;
+          a.click();
+        },
+        downloadTex(texContent, filename) {
+          const blob = new Blob([texContent], { type: 'text/x-tex' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename.replace(/\s+/g, '_');
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+        copyKeyword(kw) {
+          navigator.clipboard.writeText(kw);
+          this.showToast(`Copied "${kw}" to clipboard`);
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
